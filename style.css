@@ -64,6 +64,25 @@ button, a, [role="button"], input, textarea, select {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
 }
+
+/* —— 所有按钮/可点击元素：长按不弹菜单、不选字 ——
+ * iOS Safari 长按按钮默认会弹出"复制/查询/分享"菜单或放大镜，
+ * 会打断 .pressed 态，让用户觉得"按了没反应"。
+ * 禁用这些交互副作用，才能看到稳定的按压颜色反馈。 */
+button,
+.action-btn,
+.theme-btn,
+[role="button"],
+a {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    -webkit-touch-callout: none;       /* iOS：禁用长按呼出的系统菜单 */
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    outline: none;
+}
 p, h1, h2, h3, h4 { margin: 0; }
 button {
     font-family: inherit;
@@ -199,7 +218,13 @@ main { display: block; }
     transition: transform 80ms linear, border-color var(--transition);
 }
 .theme-btn:hover { transform: scale(1.08); }
-.theme-btn:active, .theme-btn.pressed { /* 仅背景色，不变形 */ }
+.theme-btn:active,
+.theme-btn.pressed,
+.theme-btn:focus-visible {
+    outline: 1px solid var(--text);
+    outline-offset: 2px;
+    transition: none;        /* 聚焦/按压瞬时变色，不要 transition 延迟，移动端避免"来不及看到" */
+}
 [data-theme="white"] .theme-btn[data-theme="white"],
 [data-theme="black"] .theme-btn[data-theme="black"],
 [data-theme="gray"]  .theme-btn[data-theme="gray"] {
@@ -254,10 +279,17 @@ main { display: block; }
     color: var(--bg);
 }
 .action-btn:active,
-.action-btn.pressed {
-    /* 仅颜色变化，不改变形状/位置（无 translate/scale） */
-    background-color: var(--text);
-    color: var(--bg);
+.action-btn.pressed,
+.action-btn:focus-visible {
+    /* 按压态三态并列：
+     * :active            → 桌面端鼠标 / 激活 touchstart 后的 iOS 触屏
+     * .pressed           → JS 手动类，移动端兜底（必须）
+     * :focus-visible     → 键盘 tab 聚焦态（无障碍）
+     * 用 !important 防止 hover 背景等其他选择器优先级竞争，
+     * 移动端 tap 极快时也确保颜色一定可见。 */
+    background-color: var(--text) !important;
+    color: var(--bg) !important;
+    outline: none;
 }
 .action-btn:focus-visible {
     outline: 1px solid var(--text);

@@ -184,15 +184,22 @@
      * @param {HTMLElement} btn
      * @param {number} [duration=140]
      */
-    function triggerPressed(btn, duration) {
+    /**
+     * 触发一次"带最小持续时长"的按压反馈：
+     *   1. 立刻置为按压态
+     *   2. 至少 holdMs（默认 140ms）后再释放
+     * 关键：对于移动端 touchstart → touchend 只有 20-30ms 的快速 tap，
+     * 用这个函数兜底"至少显示 140ms 反色"，用户肉眼才能感知到"按下去了"，
+     * 否则只会一闪而过，看起来像"颜色不变"。
+     */
+    function triggerPressed(btn, holdMs) {
         if (!btn) return;
-        btn.classList.add('pressed');
-        const id = btn.id || ('__btn_' + Math.random().toString(36).slice(2, 7));
-        if (pressedTimers[id]) clearTimeout(pressedTimers[id]);
-        pressedTimers[id] = setTimeout(function () {
-            btn.classList.remove('pressed');
-            delete pressedTimers[id];
-        }, typeof duration === 'number' ? duration : 140);
+        setPressedOn(btn);
+        const ms = (typeof holdMs === 'number' && holdMs > 0) ? holdMs : 140;
+        const timerId = setTimeout(function () {
+            setPressedOff(btn);
+        }, ms);
+        pressedTimers.set(btn, timerId);
     }
 
     // ========================================
@@ -445,34 +452,28 @@
     function initKeyboard() {
         if (!isFinePointerWithKeyboard()) return; // 移动端 / 触屏：不绑定空格键
 
-        // keydown：按下瞬间加 pressed 类 + 触发生成
+        // keydown：按下瞬间持续保持 pressed（setPressedOn 会清旧调度）
         document.addEventListener('keydown', function (e) {
             if (e.code === 'Space') {
                 const tag = (e.target.tagName || '').toLowerCase();
                 if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
                 e.preventDefault();
-
-                // 只在首次按下触发（不重复），避免 hold 时狂刷
-                if (!e.repeat) {
-                    triggerPressed(generateBtn, 180);
-                    generatePoem();
-                } else {
-                    // 长按时也保持 pressed 的视觉
-                    generateBtn.classList.add('pressed');
-                }
+                setPressedOn(generateBtn);   // 只要按着就一直 pressed
+                if (!e.repeat) generatePoem();
             }
         });
 
-        // keyup / 失焦：确保移除 pressed 状态
+        // keyup：释放后还要再"多显示 120ms"的反色，然后平滑消失
         document.addEventListener('keyup', function (e) {
-            if (e.code === 'Space') {
-                generateBtn.classList.remove('pressed');
-            }
+            if (e.code === 'Space') triggerPressed(generateBtn, 120);
         });
+
+        // 失焦：立即释放（不拖尾，避免失焦后还"亮着"）
         window.addEventListener('blur', function () {
-            generateBtn.classList.remove('pressed');
-            copyBtn.classList.remove('pressed');
-            downloadBtn.classList.remove('pressed');
+            setPressedOff(generateBtn);
+            setPressedOff(copyBtn);
+            setPressedOff(downloadBtn);
+            themeButtons.forEach(function (t) { setPressedOff(t); });
         });
     }
 
@@ -484,19 +485,47 @@
         copyBtn.addEventListener('click', copyShareLink);
         downloadBtn.addEventListener('click', downloadImage);
 
-        // 触屏 / 鼠标按下时也加 pressed，与空格键的反馈保持一致
+        // 触屏 / 鼠标按压态：统一走 setPressedOn / triggerPressed 状态机
+        //  关键：鼠标抬起 / 触屏抬起后，再"多显示 120ms 反色"才消失，
+        //        避免移动端极快 tap（20-30ms）时颜色一闪而过，肉眼看不到。
         const pressables = [generateBtn, copyBtn, downloadBtn];
         pressables.forEach(function (btn) {
             if (!btn) return;
-            const add = function () { btn.classList.add('pressed'); };
-            const remove = function () { btn.classList.remove('pressed'); };
-            btn.addEventListener('mousedown', add);
-            btn.addEventListener('touchstart', add, { passive: true });
-            btn.addEventListener('mouseup', remove);
-            btn.addEventListener('mouseleave', remove);
-            btn.addEventListener('touchend', remove);
-            btn.addEventListener('touchcancel', remove);
-            btn.addEventListener('blur', remove);
+
+            btn.addEventListener('touchstart', function () {
+                setPressedOn(btn);                // 手指按下：持续保持
+            }, { passive: true });
+            btn.addEventListener('touchend', function () {
+                triggerPressed(btn, 120);         // 手指抬起：再显示 120ms 才消失
+            }, { passive: true });
+            btn.addEventListener('touchcancel', function () {
+                triggerPressed(btn, 90);          // 取消也稍微拖一下尾巴，不至于太突兀
+            }, { passive: true });
+
+            btn.addEventListener('mousedown', function () {
+                setPressedOn(btn);
+            });
+            btn.addEventListener('mouseup', function () {
+                triggerPressed(btn, 100);         // 桌面鼠标抬起后稍短一些
+            });
+            btn.addEventListener('mouseleave', function () {
+                setPressedOff(btn);               // 鼠标滑出：立刻释放（符合桌面习惯）
+            });
+            btn.addEventListener('blur', function () {
+                setPressedOff(btn);
+            });
+        });
+
+        // 三个配色按钮（纸白/墨黑/素灰）也同步同一套按压视觉状态机
+        themeButtons.forEach(function (btn) {
+            if (!btn) return;
+            btn.addEventListener('touchstart', function () { setPressedOn(btn); }, { passive: true });
+            btn.addEventListener('touchend',   function () { triggerPressed(btn, 100); }, { passive: true });
+            btn.addEventListener('touchcancel',function () { setPressedOff(btn); }, { passive: true });
+            btn.addEventListener('mousedown',  function () { setPressedOn(btn); });
+            btn.addEventListener('mouseup',    function () { triggerPressed(btn, 80); });
+            btn.addEventListener('mouseleave', function () { setPressedOff(btn); });
+            btn.addEventListener('blur',       function () { setPressedOff(btn); });
         });
     }
 
