@@ -152,11 +152,15 @@
 
     function showToast(message) {
         toast.textContent = message;
+        toast.classList.remove('show');
+        // 强制重排：连续快速点击时每次都重新淡入动画，而不是"保持亮着没反应"
+        // eslint-disable-next-line no-unused-expressions
+        void toast.offsetHeight;
         toast.classList.add('show');
         if (toastTimer) clearTimeout(toastTimer);
         toastTimer = setTimeout(function () {
             toast.classList.remove('show');
-        }, 1500);
+        }, 2200);  /* 1.5s → 2.2s，足够用户有时间确认看到了提示 */
     }
 
 
@@ -342,31 +346,46 @@
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(url).then(function () {
-                showToast('网址已复制');
+                showToast('✓ 网址已复制到剪贴板');
             }).catch(function () {
-                fallbackCopyText(url, '网址已复制');
+                fallbackCopyText(url, '✓ 网址已复制到剪贴板');
             });
         } else {
-            fallbackCopyText(url, '网址已复制');
+            fallbackCopyText(url, '✓ 网址已复制到剪贴板');
         }
     }
 
     function fallbackCopyText(text, okMsg) {
-        const textarea = document.createElement('textarea');
+        var textarea = document.createElement('textarea');
         textarea.value = text;
+        textarea.setAttribute('readonly', '');   // iOS Safari 防止拉软键盘
         textarea.style.position = 'fixed';
         textarea.style.left = '-9999px';
         textarea.style.top = '-9999px';
+        textarea.style.opacity = '0';
         document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
+        try { textarea.focus(); } catch (_) {}
         try {
-            document.execCommand('copy');
-            showToast(okMsg || '已复制');
-        } catch (e) {
-            showToast('复制失败');
+            textarea.select();
+            textarea.setSelectionRange(0, (text || '').length || 999999);   // iOS Safari 必须显式设置选中范围
+        } catch (_) {}
+        var ok = false;
+        try {
+            // execCommand 返回 bool（true 成功 / false 失败），比 try/catch 更可靠
+            ok = !!document.execCommand('copy');
+        } catch (e) { ok = false; }
+
+        if (ok) {
+            showToast(okMsg || '✓ 已复制');
+        } else {
+            // 终极兜底：如果浏览器权限/沙箱不允许，弹出 prompt 让用户手动复制
+            // 这样保证用户 100% 知道"操作有反馈"，不会"点完什么都没发生"
+            try {
+                window.prompt('请手动复制下面的网址（已全选，按 Cmd/Ctrl+C）：', text || '');
+            } catch (_) {}
+            showToast('浏览器权限受限，请手动复制');
         }
-        document.body.removeChild(textarea);
+        try { if (textarea.parentNode) textarea.parentNode.removeChild(textarea); } catch (_) {}
     }
 
     // 保留原 copyPoem/fallbackCopy 不再使用（统一走 copyShareLink/fallbackCopyText）
