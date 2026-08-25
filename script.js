@@ -362,12 +362,10 @@
     // ========================================
 
     function buildShareUrl() {
-        // 构造分享链接：附 ?p=<诗句索引>，对方打开时直接展示同一句诗
-        const base = (location.origin || '') + (location.pathname || '/');
-        const q = (typeof currentIndex === 'number' && currentIndex >= 0)
-            ? '?p=' + encodeURIComponent(currentIndex)
-            : '';
-        return base + q;
+        // 随机工具：不附带 ?p= 参数，对方打开时自行随机
+        // 部署时输出：https://jeremyzhu666.github.io/mzd-quotes/
+        // 本地调试时输出：http://localhost:xxxx/（随环境动态，不写死字符串）
+        return (location.origin || '') + (location.pathname || '/');
     }
 
     function copyShareLink() {
