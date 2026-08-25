@@ -150,6 +150,10 @@ main { display: block; }
     overflow-wrap: break-word;
     -webkit-hyphens: auto;
     hyphens: auto;
+    /* 兼容 JS 端插入的 \n：七言句式「7,7.」强制分行时生效，不影响原自动换行 */
+    white-space: pre-wrap;
+    /* 保持水平居中与两端对齐视觉一致 */
+    text-wrap: balance;
     opacity: 1;
 }
 
@@ -195,7 +199,7 @@ main { display: block; }
     transition: transform 80ms linear, border-color var(--transition);
 }
 .theme-btn:hover { transform: scale(1.08); }
-.theme-btn:active, .theme-btn.pressed { transform: scale(0.92); }
+.theme-btn:active, .theme-btn.pressed { /* 仅背景色，不变形 */ }
 [data-theme="white"] .theme-btn[data-theme="white"],
 [data-theme="black"] .theme-btn[data-theme="black"],
 [data-theme="gray"]  .theme-btn[data-theme="gray"] {
@@ -251,7 +255,7 @@ main { display: block; }
 }
 .action-btn:active,
 .action-btn.pressed {
-    transform: translateY(2px);
+    /* 仅颜色变化，不改变形状/位置（无 translate/scale） */
     background-color: var(--text);
     color: var(--bg);
 }

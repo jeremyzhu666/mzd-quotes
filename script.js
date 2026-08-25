@@ -125,6 +125,39 @@
         }, 1500);
     }
 
+
+    /**
+     * 针对「七言句式（7字，7字句号）」做强制分行：逗号后插入 \n
+     * —— 严格按用户需求只处理：前 7 非标点汉字 + 逗号 + 后 7 非标点汉字 + 句号
+     * 同时支持整首七言绝句 / 七律中出现多组该结构（全局匹配）
+     *
+     * 例如：红军不怕远征难，万水千山只等闲。
+     *        ↓
+     *       红军不怕远征难\n万水千山只等闲。
+     *
+     * 其他结构（任意非 7+7 组合）一律不改动，避免对其他诗体产生全局副作用。
+     * 保留原标点（逗号消失是因为变成了 \n，句号仍保留在行末）。
+     */
+    function formatPoemForDisplay(text) {
+        if (typeof text !== 'string' || !text) return '';
+        const SEVEN = '[^\\s，。！？、,.!?；;：:「」『』\[\]()（）《》\-—·…\dA-Za-z]{7}';
+        const pattern = new RegExp(
+            '(?<left>' + SEVEN + ')'        // 前 7 字
+          + '[,，]'                        // 逗号（中英文）
+          + '(?<right>' + SEVEN + ')'      // 后 7 字
+          + '[。.](?![，。！？])',          // 句号（中英文），后面不再紧跟其他句末标点
+            'g'
+        );
+        let result = text.replace(pattern, function (m, left, right) {
+            // 保留：左 7 字 + \n + 右 7 字 + 句号（句号在 match 中被 pattern 包含，所以手动拼回来）
+            // 因为 pattern 的句号 (?![，。！？]) 是零宽后行取反，没有消费字符 —— 不，上面写的是 [。.](?!) 消费了句号
+            // 所以我们直接把最后一位（句号/点）取出来，再 + \n + 后面 + 句号
+            const lastChar = m.charAt(m.length - 1); // 就是 [。.]
+            return left + '\n' + right + lastChar;
+        });
+        return result;
+    }
+
     function formatDate() {
         const d = new Date();
         const pad = function (n) { return n < 10 ? '0' + n : '' + n; };
@@ -174,7 +207,7 @@
         poemSource.style.opacity = '0';
 
         setTimeout(function () {
-            poemText.textContent = poem.text;
+            poemText.textContent = formatPoemForDisplay(poem.text);
             poemSource.textContent = '—— ' + poem.source;
             poemText.style.transition = 'opacity 100ms ease';
             poemSource.style.transition = 'opacity 100ms ease';
@@ -257,19 +290,26 @@
     // ========================================
     function wrapText(ctx, text, maxWidth) {
         const lines = [];
-        let current = '';
-        for (let i = 0; i < text.length; i++) {
-            const ch = text[i];
-            const next = current + ch;
-            const w = ctx.measureText(next).width;
-            if (w > maxWidth && current.length > 0) {
-                lines.push(current);
-                current = ch;
-            } else {
-                current = next;
+        // 第一步：按 \\n 拆成逻辑行（对用户强制分行保持尊重，例如七言「7,7.」句式）
+        const logicalLines = (text || '').split(/\\r?\\n/);
+
+        logicalLines.forEach(function (logical) {
+            // 第二步：逻辑行内部再按宽度做视觉分行
+            let current = '';
+            for (let i = 0; i < logical.length; i++) {
+                const ch = logical[i];
+                const next = current + ch;
+                const w = ctx.measureText(next).width;
+                if (w > maxWidth && current.length > 0) {
+                    lines.push(current);
+                    current = ch;
+                } else {
+                    current = next;
+                }
             }
-        }
-        if (current.length > 0) lines.push(current);
+            if (current.length > 0) lines.push(current);
+            else if (logical === '') lines.push(''); // 保留空行语义（如绝句中间空一行）
+        });
         return lines;
     }
 
@@ -293,7 +333,7 @@
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'center';
 
-        const poemLines = wrapText(ctx, poem.text, maxTextWidth);
+        const poemLines = wrapText(ctx, formatPoemForDisplay(poem.text), maxTextWidth);
 
         // 3. 出处
         const sourceText = '—— ' + poem.source;
