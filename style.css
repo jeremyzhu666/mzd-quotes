@@ -268,8 +268,8 @@ main { display: block; }
 .btn-label {
     display: inline-block;
     line-height: 1.2;
-    font-weight: 500;
-    letter-spacing: 0.06em;
+    font-weight: 400;
+    letter-spacing: 0.04em;
 }
 .btn-hint {
     display: inline-block;
@@ -360,6 +360,42 @@ main { display: block; }
     /* 隐藏空格键提示（跨端语义：触屏无物理键盘） */
     .btn-hint {
         display: none !important;
+    }
+
+    /* =============================================================
+     * 移动端文字渲染专项修复 — 解决"宋体字太细/粘连/奇怪的 fallback 字形"问题
+     * ============================================================= */
+
+    /* 1. 诗句：字重加重 + 行高放宽 + 字距收紧，避免过细过挤 */
+    .poem-text {
+        font-weight: 500;
+        line-height: 1.4;
+        letter-spacing: 0.02em;
+        /* subpixel 抗锯齿：移动端 Retina 屏让宋体笔划更扎实，避免 antialiased 过细 */
+        -webkit-font-smoothing: subpixel-antialiased;
+        -moz-osx-font-smoothing: auto;
+        text-rendering: optimizeLegibility;
+        /* 移动端兼容性一般且我们已有强制分行逻辑，去掉 balance */
+        text-wrap: wrap;
+        /* 字体族兜底顺序：系统宋/苹方优先，避免在线 Google Fonts 加载慢或失败时字形怪异 */
+        font-family: "Songti SC", "STSong", "PingFang SC", "Hiragino Sans GB",
+                     "SimSun", "Microsoft YaHei",
+                     "WenQuanYi Bitmap Song", "AR PL UMing CN", "AR PL SungtiL GB",
+                     "Heiti SC", "SimHei",
+                     "Noto Serif SC", "Source Han Serif SC", "Source Han Serif CN",
+                     serif;
+    }
+
+    /* 2. 词牌名/出处：次级色已弱化，但移动端不能太细，字重 +100 到 400 */
+    .poem-source {
+        font-weight: 400;
+        -webkit-font-smoothing: subpixel-antialiased;
+    }
+
+    /* 3. header 标题：与词牌名同样式，同步取消细字重 */
+    .site-title {
+        font-weight: 400;
+        -webkit-font-smoothing: subpixel-antialiased;
     }
 }
 
