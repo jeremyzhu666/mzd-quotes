@@ -3,38 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MZD Quotes</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "SimHei", sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background-color: #fff;
-            max-width: 720px;
-            margin: 0 auto;
-            padding: 60px 24px;
-        }
-
-        h1 {
-            font-size: 28px;
-            font-weight: 600;
-            margin-bottom: 16px;
-        }
-
-        p {
-            font-size: 16px;
-            color: #666;
-        }
-    </style>
+    <title>Verses — 诗词生成器</title>
+    <meta name="description" content="极简、克制、充满秩序感的诗词随机生成与图片分享工具。">
+    <meta property="og:title" content="Verses — 诗词生成器">
+    <meta property="og:description" content="一句诗，一张图，一种秩序之美。">
+    <meta property="og:type" content="website">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <h1>MZD Quotes</h1>
-    <p>页面建设中。</p>
+<body data-theme="white">
+    <main class="container">
+        <section class="poem-area" id="poemArea">
+            <p class="poem-text" id="poemText">雄关漫道真如铁，而今迈步从头越。</p>
+            <p class="poem-source" id="poemSource">—— 忆秦娥·娄山关</p>
+        </section>
+
+        <section class="controls">
+            <div class="theme-switcher">
+                <button class="theme-btn" data-theme="white" aria-label="纸白配色"></button>
+                <button class="theme-btn" data-theme="black" aria-label="墨黑配色"></button>
+                <button class="theme-btn" data-theme="gray" aria-label="素灰配色"></button>
+            </div>
+
+            <div class="actions">
+                <button class="action-btn" id="generateBtn">生 成</button>
+                <button class="action-btn" id="downloadBtn">下 载</button>
+                <button class="action-btn" id="copyBtn">复 制</button>
+            </div>
+        </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- 隐藏的导出容器，用于图片生成 -->
+    <div class="export-container" id="exportContainer" aria-hidden="true">
+        <div class="export-inner">
+            <p class="export-text" id="exportText"></p>
+            <p class="export-source" id="exportSource"></p>
+        </div>
+    </div>
+
+    <script src="poems.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
