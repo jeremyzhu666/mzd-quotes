@@ -520,37 +520,68 @@
     }
 
     function initKeyboard() {
-        // 全局绑定 document keydown/keyup —— 不做 isFinePointerWithKeyboard 拦截。
-        // 原因：
-        //   1) 旧逻辑 hasTouch 会误伤带触屏的笔记本 / iPadOS 桌面模式 + 外接键盘
-        //      → 导致整段 document listener 根本没注册，"只有按钮 focus 时 Space 才生效"
-        //   2) 移动端（纯触屏）在没有输入框 focus 时，软键盘根本不会弹出来，
-        //      用户根本没有办法按到全局的 Space，不会误触。
-        //   3) 唯一能触发全局 Space 的就是"有物理键盘"的场景，正是目标用户。
+        // 三重保障修复"空格需要选中按钮才生效"：
+        //   1) body tabindex="-1" 让 body 成为合法焦点接收者（HTML 端已加）
+        //   2) document + window 双通道 capture 阶段绑定，不漏事件
+        //   3) e.code / e.key / e.keyCode 三条件命中（兼容老浏览器/iPad 外接键盘）
+        //   4) init 末尾 document.body.focus({ preventScroll: true }) 拉回焦点
+        var isEditableTarget = function (t) {
+            if (!t) return false;
+            try {
+                var tag = (t.tagName || '').toLowerCase();
+                if (tag === 'input' || tag === 'textarea') return true;
+                if (t.isContentEditable) return true;
+            } catch (e) { /* ignore */ }
+            return false;
+        };
+        var isSpaceEvent = function (e) {
+            if (e.code === 'Space') return true;
+            if (e.key === ' ') return true;
+            // 老 Safari / IE 兼容
+            var kc = (typeof e.keyCode === 'number') ? e.keyCode : (typeof e.which === 'number' ? e.which : -1);
+            if (kc === 32) return true;
+            return false;
+        };
+        var onPress = function (e) {
+            if (!isSpaceEvent(e)) return;
+            if (isEditableTarget(e.target)) return;
+            try { e.preventDefault && e.preventDefault(); } catch (_) {}
+            try { e.stopPropagation && e.stopPropagation(); } catch (_) {}
+            setPressedOn(generateBtn);
+            if (!e.repeat) generatePoem();
+        };
+        var onRelease = function (e) {
+            if (!isSpaceEvent(e)) return;
+            if (isEditableTarget(e.target)) return;
+            try { e.preventDefault && e.preventDefault(); } catch (_) {}
+            triggerPressed(generateBtn, 80);
+        };
+        // capture=true：事件在捕获阶段就拦截，防止焦点元素吞事件
+        document.addEventListener('keydown', onPress, true);
+        window.addEventListener('keydown', onPress, true);
+        document.addEventListener('keyup', onRelease, true);
+        window.addEventListener('keyup', onRelease, true);
 
-        // keydown：按下瞬间持续保持 pressed（setPressedOn 会清旧调度）
-        document.addEventListener('keydown', function (e) {
-            if (e.code === 'Space') {
-                const tag = (e.target.tagName || '').toLowerCase();
-                if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
-                e.preventDefault();
-                setPressedOn(generateBtn);   // 只要按着就一直 pressed
-                if (!e.repeat) generatePoem();
-            }
-        });
-
-        // keyup：释放后还要再"多显示 120ms"的反色，然后平滑消失
-        document.addEventListener('keyup', function (e) {
-            if (e.code === 'Space') triggerPressed(generateBtn, 120);
-        });
-
-        // 失焦：立即释放（不拖尾，避免失焦后还"亮着"）
+        // 失焦立即释放所有 pressed 状态
         window.addEventListener('blur', function () {
             setPressedOff(generateBtn);
             setPressedOff(copyBtn);
             setPressedOff(downloadBtn);
             themeButtons.forEach(function (t) { setPressedOff(t); });
         });
+
+        // 焦点拉回 body（防止首屏第一下 Space 丢失）
+        try {
+            if (document.body && typeof document.body.focus === 'function') {
+                setTimeout(function () {
+                    try {
+                        document.body.focus({ preventScroll: true });
+                    } catch (_) {
+                        try { document.body.focus(); } catch (__) {}
+                    }
+                }, 80);
+            }
+        } catch (e) { /* ignore */ }
     }
 
     // ========================================
@@ -569,13 +600,13 @@
             if (!btn) return;
 
             btn.addEventListener('touchstart', function () {
-                setPressedOn(btn);                // 手指按下：持续保持
+                setPressedOn(btn);                // 按下：立即 pressed（变色反馈）
             }, { passive: true });
             btn.addEventListener('touchend', function () {
-                triggerPressed(btn, 120);         // 手指抬起：再显示 120ms 才消失
+                setPressedOff(btn);               // 手指一离开：立即回到原色，无拖尾
             }, { passive: true });
             btn.addEventListener('touchcancel', function () {
-                triggerPressed(btn, 90);          // 取消也稍微拖一下尾巴，不至于太突兀
+                setPressedOff(btn);               // 取消：立即还原
             }, { passive: true });
 
             btn.addEventListener('mousedown', function () {
@@ -596,7 +627,7 @@
         themeButtons.forEach(function (btn) {
             if (!btn) return;
             btn.addEventListener('touchstart', function () { setPressedOn(btn); }, { passive: true });
-            btn.addEventListener('touchend',   function () { triggerPressed(btn, 100); }, { passive: true });
+            btn.addEventListener('touchend',   function () { setPressedOff(btn); }, { passive: true });
             btn.addEventListener('touchcancel',function () { setPressedOff(btn); }, { passive: true });
             btn.addEventListener('mousedown',  function () { setPressedOn(btn); });
             btn.addEventListener('mouseup',    function () { triggerPressed(btn, 80); });
@@ -609,11 +640,10 @@
     // Initialize
     // ========================================
     function init() {
-        // 移动端 / 触屏：DOM 层面移除「按空格键切换」提示，
-        // 作为 CSS @media 之外的一层兜底，保证任何端（含老旧浏览器）都看不到这条提示。
+        // 移动端 / 触屏：DOM 层移除空格提示（独立 .space-hint + 旧 .btn-hint）
         if (!isFinePointerWithKeyboard()) {
-            document.querySelectorAll('.btn-hint').forEach(function (el) {
-                el.parentNode && el.parentNode.removeChild(el);
+            document.querySelectorAll('.space-hint, .btn-hint').forEach(function (el) {
+                try { if (el && el.parentNode) el.parentNode.removeChild(el); } catch (_) {}
             });
         }
 

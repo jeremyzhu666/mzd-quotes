@@ -276,6 +276,28 @@ main { display: block; }
 .action-row-primary { width: 100%; }
 .action-row-secondary { width: 100%; }
 
+/* ==== 独立空格提示：功能与「随机生成」按钮拆开（按钮只负责随机生成语义） ==== */
+.space-hint {
+    display: block;
+    width: 100%;
+    margin: -5px 0 2px 0;
+    padding: 0;
+    text-align: center;
+    font-family: "Inter", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "WenQuanYi Micro Hei", sans-serif;
+    font-size: 12px;
+    line-height: 1.3;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    opacity: 0.75;
+    transition: opacity var(--transition), color var(--transition);
+    user-select: none;
+    pointer-events: none;
+}
+@media (pointer: fine) and (min-width: 769px) {
+    .space-hint { opacity: 0.85; }
+}
+
 .action-btn {
     flex: 1;
     min-width: 0;
@@ -414,7 +436,8 @@ main { display: block; }
         padding: 10px 13px;                 /* -20%：13→10.4≈10，16→12.8≈13 */
         gap: 0;                             /* 移动端不显示提示时，内部 gap 置 0 更紧凑 */
     }
-    /* 隐藏空格键提示（跨端语义：触屏无物理键盘） */
+    /* 隐藏空格键提示（触屏/窄屏无物理键盘） */
+    .space-hint,
     .btn-hint {
         display: none !important;
     }
