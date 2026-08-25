@@ -245,29 +245,36 @@
     // ========================================
     // Copy
     // ========================================
-    function copyPoem() {
-        const list = getPoems();
-        const poem = list[currentIndex];
-        if (!poem) {
+
+    function buildShareUrl() {
+        // 构造分享链接：附 ?p=<诗句索引>，对方打开时直接展示同一句诗
+        const base = (location.origin || '') + (location.pathname || '/');
+        const q = (typeof currentIndex === 'number' && currentIndex >= 0)
+            ? '?p=' + encodeURIComponent(currentIndex)
+            : '';
+        return base + q;
+    }
+
+    function copyShareLink() {
+        const url = buildShareUrl();
+        if (currentIndex < 0) {
             showToast('数据加载中，请稍后再试');
             return;
         }
-        const text = poem.text + '\n—— ' + poem.source;
-
         triggerPressed(copyBtn, 140);
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(function () {
-                showToast('已复制');
+            navigator.clipboard.writeText(url).then(function () {
+                showToast('链接已复制');
             }).catch(function () {
-                fallbackCopy(text);
+                fallbackCopyText(url, '链接已复制');
             });
         } else {
-            fallbackCopy(text);
+            fallbackCopyText(url, '链接已复制');
         }
     }
 
-    function fallbackCopy(text) {
+    function fallbackCopyText(text, okMsg) {
         const textarea = document.createElement('textarea');
         textarea.value = text;
         textarea.style.position = 'fixed';
@@ -278,12 +285,15 @@
         textarea.select();
         try {
             document.execCommand('copy');
-            showToast('已复制');
+            showToast(okMsg || '已复制');
         } catch (e) {
             showToast('复制失败');
         }
         document.body.removeChild(textarea);
     }
+
+    // 保留原 copyPoem/fallbackCopy 不再使用（统一走 copyShareLink/fallbackCopyText）
+
 
     // ========================================
     // Canvas 图片生成
@@ -471,7 +481,7 @@
     // ========================================
     function initEvents() {
         generateBtn.addEventListener('click', generatePoem);
-        copyBtn.addEventListener('click', copyPoem);
+        copyBtn.addEventListener('click', copyShareLink);
         downloadBtn.addEventListener('click', downloadImage);
 
         // 触屏 / 鼠标按下时也加 pressed，与空格键的反馈保持一致
@@ -512,7 +522,21 @@
         // 提前触发字体加载 Promise，后续下载时大概率已就绪
         waitForFonts();
 
-        currentIndex = getRandomIndex();
+        // 支持分享链接 ?p=<index>：打开时固定显示同一句诗（方便他人点开看到相同内容）
+        let initialIndex = -1;
+        try {
+            const params = new URLSearchParams(window.location.search || '');
+            if (params.has('p')) {
+                const p = parseInt(params.get('p'), 10);
+                if (!isNaN(p) && p >= 0 && p < list.length) initialIndex = p;
+            }
+        } catch (e) { /* 忽略解析错误，走随机 */ }
+
+        if (initialIndex >= 0) {
+            currentIndex = initialIndex;
+        } else {
+            currentIndex = getRandomIndex();
+        }
         displayPoem(currentIndex);
 
         initThemeButtons();
