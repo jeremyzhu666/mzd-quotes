@@ -18,12 +18,9 @@
     const themeBtns = document.querySelectorAll('.theme-btn');
     const body = document.body;
     const toast = document.getElementById('toast');
-    const exportContainer = document.getElementById('exportContainer');
-    const exportText = document.getElementById('exportText');
-    const exportSource = document.getElementById('exportSource');
 
     // ========================================
-    // Theme Config — 用于图片生成时的配色映射
+    // Theme Config — 页面展示与图片生成共用
     // ========================================
     const themeConfig = {
         white: { bg: '#FFFFFF', text: '#1A1A1A', secondary: '#888888' },
@@ -140,58 +137,142 @@
     }
 
     // ========================================
-    // Download Image
+    // Canvas 图片生成（替代 dom-to-image，彻底解决跨域问题）
     // ========================================
-    function downloadImage() {
-        if (typeof domtoimage === 'undefined') {
-            showToast('图片组件加载中，请稍后再试');
-            return;
+    const CANVAS_W = 1080;
+    const CANVAS_H = 1350;
+    const PADDING = 162; // 15% of 1080，四周边距
+    const POEM_FONT_SIZE = 88;
+    const SOURCE_FONT_SIZE = 32;
+    const POEM_LINE_HEIGHT = 1.7;
+    const GAP_BETWEEN = 64; // 诗句与出处间距
+
+    // 诗句字体族：优先使用思源宋体，降级到系统宋体
+    const POEM_FONT_FAMILY = '"Noto Serif SC", "Source Han Serif SC", "PingFang SC", "SimSun", "Songti SC", serif';
+    const SOURCE_FONT_FAMILY = '"Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+
+    /**
+     * 按宽度将文本切分成多行（支持中英文混合）
+     */
+    function wrapText(ctx, text, maxWidth) {
+        const lines = [];
+        let current = '';
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            const next = current + ch;
+            const w = ctx.measureText(next).width;
+            if (w > maxWidth && current.length > 0) {
+                lines.push(current);
+                current = ch;
+            } else {
+                current = next;
+            }
+        }
+        if (current.length > 0) lines.push(current);
+        return lines;
+    }
+
+    /**
+     * 使用原生 Canvas 绘制诗句图片
+     */
+    function renderPoemToCanvas(poem, colors) {
+        const canvas = document.createElement('canvas');
+        const dpr = window.devicePixelRatio || 1;
+        // 内部使用更高分辨率绘制，再缩放到目标尺寸，保证清晰
+        canvas.width = CANVAS_W;
+        canvas.height = CANVAS_H;
+        const ctx = canvas.getContext('2d');
+
+        // 1. 填充背景
+        ctx.fillStyle = colors.bg;
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+        const maxTextWidth = CANVAS_W - PADDING * 2;
+
+        // 2. 准备诗句样式并计算换行
+        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + POEM_FONT_FAMILY;
+        ctx.fillStyle = colors.text;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        ctx.letterSpacing = '0.05em';
+
+        const poemLines = wrapText(ctx, poem.text, maxTextWidth);
+
+        // 3. 准备出处样式
+        const sourceText = '—— ' + poem.source;
+        ctx.font = '300 ' + SOURCE_FONT_SIZE + 'px ' + SOURCE_FONT_FAMILY;
+        ctx.fillStyle = colors.secondary;
+        ctx.textAlign = 'center';
+
+        // 4. 计算整体内容高度，用于垂直居中
+        const poemBlockHeight = poemLines.length * POEM_FONT_SIZE * POEM_LINE_HEIGHT;
+        const sourceBlockHeight = SOURCE_FONT_SIZE * 1.4;
+        const totalContentHeight = poemBlockHeight + GAP_BETWEEN + sourceBlockHeight;
+
+        let currentY = (CANVAS_H - totalContentHeight) / 2;
+        const centerX = CANVAS_W / 2;
+
+        // 5. 绘制诗句
+        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + POEM_FONT_FAMILY;
+        ctx.fillStyle = colors.text;
+        const lineStep = POEM_FONT_SIZE * POEM_LINE_HEIGHT;
+        // 从第一行的中线位置开始绘制
+        currentY += POEM_FONT_SIZE * POEM_LINE_HEIGHT / 2;
+        for (let i = 0; i < poemLines.length; i++) {
+            ctx.fillText(poemLines[i], centerX, currentY);
+            currentY += lineStep;
         }
 
+        // 6. 绘制出处
+        currentY += GAP_BETWEEN - lineStep / 2 + SOURCE_FONT_SIZE * 1.4 / 2;
+        ctx.font = '300 ' + SOURCE_FONT_SIZE + 'px ' + SOURCE_FONT_FAMILY;
+        ctx.fillStyle = colors.secondary;
+        ctx.fillText(sourceText, centerX, currentY);
+
+        return canvas;
+    }
+
+    function downloadImage() {
         const poem = poems[currentIndex];
+        if (!poem) {
+            showToast('数据加载中，请稍后再试');
+            return;
+        }
         const theme = body.getAttribute('data-theme') || 'white';
         const colors = themeConfig[theme];
 
-        // 设置导出容器的内容与配色
-        exportContainer.style.backgroundColor = colors.bg;
-        exportContainer.style.color = colors.text;
-        exportText.textContent = poem.text;
-        exportText.style.color = colors.text;
-        exportSource.textContent = '—— ' + poem.source;
-        exportSource.style.color = colors.secondary;
-
-        // 等字体加载完成（尽量确保字体生效）
-        const ensureFonts = function () {
-            if (document.fonts && document.fonts.ready) {
-                return document.fonts.ready;
-            }
-            return Promise.resolve();
-        };
-
         downloadBtn.setAttribute('disabled', 'true');
 
-        ensureFonts().then(function () {
-            return domtoimage.toPng(exportContainer, {
-                width: 1080,
-                height: 1350,
-                style: {
-                    'font-family': '"Noto Serif SC", "PingFang SC", "SimSun", serif'
+        try {
+            const canvas = renderPoemToCanvas(poem, colors);
+            canvas.toBlob(function (blob) {
+                try {
+                    if (!blob) {
+                        throw new Error('Canvas 导出失败');
+                    }
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = 'verses-' + formatDate() + '.png';
+                    link.href = url;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    setTimeout(function () {
+                        URL.revokeObjectURL(url);
+                    }, 1000);
+                    showToast('已下载');
+                } catch (err) {
+                    console.error(err);
+                    showToast('下载失败，请重试');
+                } finally {
+                    downloadBtn.removeAttribute('disabled');
                 }
-            });
-        }).then(function (dataUrl) {
-            const link = document.createElement('a');
-            link.download = 'verses-' + formatDate() + '.png';
-            link.href = dataUrl;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast('已下载');
-        }).catch(function (err) {
+            }, 'image/png');
+        } catch (err) {
             console.error(err);
             showToast('下载失败，请重试');
-        }).finally(function () {
             downloadBtn.removeAttribute('disabled');
-        });
+        }
     }
 
     // ========================================
@@ -199,14 +280,13 @@
     // ========================================
     function initKeyboard() {
         document.addEventListener('keydown', function (e) {
-            // 空格键触发生成（防止输入框等场景）
+            // 空格键触发生成（排除输入框等场景）
             if (e.code === 'Space' && !e.repeat) {
                 const tag = (e.target.tagName || '').toLowerCase();
                 if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
                 e.preventDefault();
                 generatePoem();
             }
-            // Enter 触发复制（当焦点在按钮时由浏览器原生处理）
         });
     }
 
@@ -223,7 +303,6 @@
     // Initialize
     // ========================================
     function init() {
-        // 确保 poems 存在
         if (typeof poems === 'undefined' || !poems.length) {
             poemText.textContent = '数据加载失败';
             poemSource.textContent = '';
@@ -238,7 +317,6 @@
         initKeyboard();
     }
 
-    // DOM 就绪后启动
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
