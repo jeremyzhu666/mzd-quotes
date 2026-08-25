@@ -259,7 +259,7 @@ main { display: block; }
 .actions {
     display: flex;
     flex-direction: column;
-    gap: 13px;                              /* -20%：主行 ↔ 次行 的垂直间距 */
+    gap: 12px;                              /* -20% 基础上再 -10%：主行 ↔ 次行 的垂直间距 */
     width: 100%;
     max-width: 420px;
     align-items: center;
@@ -432,7 +432,7 @@ main { display: block; }
         gap: 13px;                          /* 与桌面同步：黑白灰三点 -20% */
     }
     .actions {
-        gap: 10px;                          /* -20%：12 → 9.6 ≈ 10，两行按钮之间 */
+        gap: 9px;                            /* -20% 基础上再 -10%：两行按钮之间 */
         max-width: 100%;
     }
     .action-row {
