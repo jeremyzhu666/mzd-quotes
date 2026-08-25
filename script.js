@@ -8,7 +8,8 @@
     let toastTimer = null;
     let pressedTimers = new WeakMap();       // btn element -> timeout id（拖尾释放）
     const touchLockUntil = new WeakMap();    // btn element -> ms 时间戳，此时间内忽略兼容性 mouse* 事件（桌面路径用）
-    const maxHoldTimers = new WeakMap();     // btn element -> timeout id（1500ms 强制释放保安锁：所有路径兜底）
+    const maxHoldTimers = new WeakMap();     // btn element -> timeout id（最长 1500ms 强制释放保安锁：所有路径兜底）
+    const pressedStartedAt = new WeakMap();  // btn element -> 按压起始 ms 时间戳（兜底用：定时器被 iOS 挂起时，靠真实时间差判断是否超时）
     let generateThrottleTimer = null;        // generatePoem 节流锁，防止空格+click 双重触发
 
     // ========================================
@@ -341,31 +342,32 @@
     /**
      * 按钮按压态底层开关
      *   setPressedOn  —— 立即进入 pressed 反色态
+     *     · 记录 pressedStartedAt 起始时间戳（绝对时间）—— 用于定时器被 iOS 挂起兜底
      *     · 如果有 pending 释放定时器（pressedTimers），先清掉
-     *     · 同时挂 1500ms 强制释放（保安锁 maxHoldTimers）——无论什么原因
-     *       （兼容事件打架、业务异常、触摸中断等），超过 1.5s 必释放，杜绝卡死。
-     *   setPressedOff —— 立即退出 pressed 态，同时清理 pressedTimers + maxHoldTimers。
+     *     · 同时挂 800ms 强制释放（保安锁 maxHoldTimers，iOS 缩短到 800ms），无论什么
+     *       原因（事件打架、业务异常、触摸中断、页面切后台冻结定时器）都必释放。
+     *   setPressedOff —— 立即退出 pressed 态，同时清理 pressedTimers + maxHoldTimers + 起始时间戳。
      * 统一入口：所有 mouse/touch/keyboard/click 的按压视觉都走这两个函数。
      */
+    const MAX_PRESSED_MS = 800;               // 最长按压视觉：≤ 800ms（移动端实际 tap+拖尾 ≤ 200ms，这个阈值是"绝对卡死"兜底判断）
     function setPressedOn(btn) {
         if (!btn) return;
-        // 拖尾定时器
+        pressedStartedAt.set(btn, Date.now()); // 绝对时间戳：与 setTimeout 无关，页面切后台回来也能判断是否超时
+        // 拖尾定时器（如果有旧的释放挂起中，先清掉避免残留下一次释放把这次打断）
         const existing = pressedTimers.get(btn);
         if (existing) {
             clearTimeout(existing);
             pressedTimers.delete(btn);
         }
-        // 保安锁：最长 1500ms 无论如何强制释放
+        // 保安锁：最长 MAX_PRESSED_MS 无论如何强制释放（页面被冻结导致 setTimeout 不按时走也不怕，还有全局兜底扫描）
         const existingMax = maxHoldTimers.get(btn);
         if (existingMax) {
             clearTimeout(existingMax);
             maxHoldTimers.delete(btn);
         }
-        const FORCE_RELEASE_MS = 1500;
         const maxId = setTimeout(function () {
-            try { btn.classList.remove('pressed'); } catch (_) {}
-            try { maxHoldTimers.delete(btn); } catch (_) {}
-        }, FORCE_RELEASE_MS);
+            try { setPressedOff(btn); } catch (_) {}
+        }, MAX_PRESSED_MS);
         maxHoldTimers.set(btn, maxId);
         btn.classList.add('pressed');
     }
@@ -383,7 +385,35 @@
             clearTimeout(existingMax);
             maxHoldTimers.delete(btn);
         }
+        try { pressedStartedAt.delete(btn); } catch (_) {}
         btn.classList.remove('pressed');
+    }
+    /**
+     * 全局兜底扫描：遍历传入的所有按钮，
+     * 只要 pressed 类仍在 且（无 pressedTimers 或 开始时间戳超过 MAX_PRESSED_MS）就强制释放。
+     * 触发时机：
+     *   · window touchend/touchcancel（任何一次触摸结束都扫一遍，防止单按钮事件漏收）
+     *   · window visibilitychange visible（切后台回来立即扫一遍，setTimeout 冻结错过的都捞回来）
+     *   · 节流 + 任何一次 setPressedOn/Off 冲突时的"最后防线"
+     */
+    function forceReleaseStalePressed(btnList) {
+        if (!btnList || !btnList.length) return;
+        var now = Date.now();
+        for (var i = 0; i < btnList.length; i++) {
+            var b = btnList[i];
+            if (!b) continue;
+            if (!b.classList || !b.classList.contains('pressed')) continue;
+            var started = pressedStartedAt.get(b);
+            var hasTrail = pressedTimers.has(b);
+            // 没记录起始时间 → 未知来源 pressed，直接释放；
+            // 有起始时间 且 超 MAX_PRESSED_MS 阈值 → 卡死兜底释放；
+            // 两者都 OK 但没有定时器（既没有 trail 也没有 maxHold）→ 可能定时器丢失，释放；
+            if ((typeof started !== 'number')
+                || (now - started >= MAX_PRESSED_MS)
+                || (!hasTrail && !maxHoldTimers.has(b))) {
+                setPressedOff(b);
+            }
+        }
     }
 
     /**
@@ -777,14 +807,28 @@
 
         // 触屏 / 鼠标按压态：统一走 setPressedOn / triggerPressed 状态机
         //  — 桌面端：mousedown → setPressedOn；mouseup → triggerPressed(100ms) 拖尾；mouseleave → setPressedOff
-        //  — 移动端：touchstart → setPressedOn；touchend → triggerPressed(100ms) 拖尾；touchcancel → setPressedOff
+        //  — 移动端：touchstart → setPressedOn
+        //            + touchmove 位移阈值判断（滑出按钮立即 setPressedOff，模拟桌面 mouseleave）
+        //            + touchend → triggerPressed(100ms) 拖尾
+        //            + touchcancel → setPressedOff
         //  两端动画完全等价：按下立即变色，抬起后"多显示 100ms 反色"才消失，
         //  避免移动端极快 tap（20-30ms）时颜色一闪而过，肉眼看不到。
-        //  关键修复：移动端 tap 后浏览器会 ~300ms 补发兼容性 mousedown/mouseup 事件，
-        //  如果不拦截，mousedown 会把刚 release 的 pressed class 再加回去，
-        //  甚至某些场景下不再发 mouseup → 按钮"卡死在反色"。
-        //  方案：每次 touch 事件后给该按钮打 700ms 时间锁，锁窗内忽略 mouse* 事件。
-        const TOUCH_LOCK_MS = 700;
+        //  关键修复 1：移动端 tap 后浏览器会 ~300ms 补发兼容性 mousedown/mouseup 事件，
+        //    不拦截的话 mousedown 会把刚 release 的 pressed class 再加回去，
+        //    甚至某些场景下不再发 mouseup → 按钮"卡死在反色"。
+        //    → 每次 touch 事件后给该按钮打 500ms 时间锁（之前 700ms，覆盖 300~400ms 的合成事件即可，
+        //      太长会导致用户连续快速点第二次的时候，第二次真实 mouse* 被误锁，反而增加卡死风险）。
+        //  关键修复 2：iOS Safari 真机的事件丢失场景——
+        //    (a) 手指按下按钮，轻微滑出按钮边界 / 页面微滚动 → 既不发 touchend 也不发 touchcancel
+        //    (b) 切后台（锁屏/来电/上滑多任务）→ setTimeout 被系统冻结，pressedTimers/maxHoldTimers 都错过触发时机
+        //    (c) iOS 自带 -webkit-tap-highlight-color 灰层与我们 pressed 反色叠加 → 视觉残留
+        //    → 多层兜底：
+        //        · 按钮级 touchmove 监听：位移阈值判断滑出 → 立即 setPressedOff
+        //        · 全局 window 级 touchend/touchcancel：任何一次触摸结束都扫一遍所有按钮是否有 stale pressed
+        //        · 全局 document visibilitychange → visible 时立即扫（切后台回来兜底）
+        //        · pressedStartedAt 绝对时间戳：不靠 setTimeout，用真实 Date.now() 差判断是否超时
+        const TOUCH_LOCK_MS = 500;
+        const MOVE_OUT_PX = 8;                 // 位移阈值：手指从 touchstart 点向任何方向挪 > 8px 视为"滑出"，立即取消 pressed
         function markTouchLock(btn, extraMs) {
             const ms = (typeof extraMs === 'number' && extraMs > 0) ? extraMs : TOUCH_LOCK_MS;
             touchLockUntil.set(btn, Date.now() + ms);
@@ -793,19 +837,77 @@
             const until = touchLockUntil.get(btn);
             return (typeof until === 'number') && (Date.now() < until);
         }
+        function getTouchStartPoint(e) {
+            try {
+                if (e && e.touches && e.touches.length) {
+                    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+                if (e && e.changedTouches && e.changedTouches.length) {
+                    return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+                }
+            } catch (_) {}
+            return null;
+        }
+        function isPointInsideBtn(btn, x, y) {
+            try {
+                var r = btn.getBoundingClientRect();
+                return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+            } catch (_) { return true; }
+        }
         const pressables = [generateBtn, copyBtn, downloadBtn];
+        const allButtons = pressables.concat(themeBtns || []).filter(Boolean);
+
+        // ------- 主按钮 + 副按钮：随机生成 / 图片分享 / 网址复制 -------
         pressables.forEach(function (btn) {
             if (!btn) return;
+            // 保存每个按钮的 touchstart 点，位移阈值判断用
+            var startPt = null;
 
-            btn.addEventListener('touchstart', function () {
-                setPressedOn(btn);                // 按下：立即 pressed（变色反馈）
+            btn.addEventListener('touchstart', function (e) {
+                startPt = getTouchStartPoint(e);
+                setPressedOn(btn);
                 markTouchLock(btn, TOUCH_LOCK_MS);
             }, { passive: true });
-            btn.addEventListener('touchend', function () {
+
+            btn.addEventListener('touchmove', function (e) {
+                // iOS Safari 经典 bug：手指按下 → 稍微挪一点（0.5~5px 页面微滚动或轻微位移）
+                //   → 系统判定用户要滚动而非点击，后续 touchend/touchcancel **都可能不发**，
+                //   于是 pressed 类永远留在那里。
+                // 这里主动监听 move：两种情况任一命中就立即释放：
+                //   A. 位移超过 MOVE_OUT_PX（手指明显挪了，视为"放弃点击" → 还原）
+                //   B. 当前触点坐标已经不在按钮矩形内（滑出按钮 → 还原，对应桌面 mouseleave）
+                if (!startPt) return;
+                var cur = null;
+                try {
+                    if (e && e.touches && e.touches.length) {
+                        cur = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    }
+                } catch (_) {}
+                if (!cur) return;
+                var dx = cur.x - startPt.x;
+                var dy = cur.y - startPt.y;
+                var distSq = dx * dx + dy * dy;
+                var moved = distSq > (MOVE_OUT_PX * MOVE_OUT_PX);
+                var outside = !isPointInsideBtn(btn, cur.x, cur.y);
+                if (moved || outside) {
+                    setPressedOff(btn);
+                }
+            }, { passive: true });
+
+            btn.addEventListener('touchend', function (e) {
+                startPt = null;
                 triggerPressed(btn, 100);         // 抬起：多显示 100ms 反色，与桌面端 mouseup 完全一致
                 markTouchLock(btn, TOUCH_LOCK_MS);
+                // 合成 click 即将触发的 300ms 窗口 + 拖尾 100ms = 400ms 后，强制扫一次，
+                // 防止合成 mouse 事件 + 拖尾定时器 打架导致 pressed 残留
+                var t0 = Date.now();
+                setTimeout(function () {
+                    forceReleaseStalePressed(allButtons);
+                }, 450);
             }, { passive: true });
+
             btn.addEventListener('touchcancel', function () {
+                startPt = null;
                 setPressedOff(btn);               // 取消：立即还原（对应桌面端 mouseleave）
                 markTouchLock(btn, TOUCH_LOCK_MS);
             }, { passive: true });
@@ -827,18 +929,38 @@
             });
         });
 
-        // 三个配色按钮（纸白/墨黑/素灰）也同步同一套按压视觉状态机
+        // ------- 三个配色按钮（纸白/墨黑/素灰）：同一套状态机，拖尾 80ms -------
         themeBtns.forEach(function (btn) {
             if (!btn) return;
-            btn.addEventListener('touchstart', function () {
+            var startPt = null;
+            btn.addEventListener('touchstart', function (e) {
+                startPt = getTouchStartPoint(e);
                 setPressedOn(btn);
                 markTouchLock(btn, TOUCH_LOCK_MS);
             }, { passive: true });
+            btn.addEventListener('touchmove', function (e) {
+                if (!startPt) return;
+                var cur = null;
+                try {
+                    if (e && e.touches && e.touches.length) {
+                        cur = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    }
+                } catch (_) {}
+                if (!cur) return;
+                var dx = cur.x - startPt.x;
+                var dy = cur.y - startPt.y;
+                var moved = (dx * dx + dy * dy) > (MOVE_OUT_PX * MOVE_OUT_PX);
+                var outside = !isPointInsideBtn(btn, cur.x, cur.y);
+                if (moved || outside) setPressedOff(btn);
+            }, { passive: true });
             btn.addEventListener('touchend', function () {
+                startPt = null;
                 triggerPressed(btn, 80);          // 与桌面主题按钮 mouseup 拖尾 80ms 一致
                 markTouchLock(btn, TOUCH_LOCK_MS);
+                setTimeout(function () { forceReleaseStalePressed(allButtons); }, 450);
             }, { passive: true });
             btn.addEventListener('touchcancel', function () {
+                startPt = null;
                 setPressedOff(btn);
                 markTouchLock(btn, TOUCH_LOCK_MS);
             }, { passive: true });
@@ -858,6 +980,33 @@
                 setPressedOff(btn);
             });
         });
+
+        // ========================================
+        // 全局兜底：拦截 iOS Safari 各种"按钮事件漏发 / 定时器冻结"场景
+        // ========================================
+        var pendingScanTimer = null;
+        function scheduleGlobalScan(delayMs) {
+            if (pendingScanTimer) clearTimeout(pendingScanTimer);
+            pendingScanTimer = setTimeout(function () {
+                pendingScanTimer = null;
+                forceReleaseStalePressed(allButtons);
+            }, delayMs);
+        }
+        // 任何一次"触摸结束 / 取消"全局事件 —— 扫一遍，
+        // 覆盖"单个按钮没收到自己的 touchend/touchcancel，但 window 收到了"的场景。
+        window.addEventListener('touchend', function () { scheduleGlobalScan(150); }, { passive: true });
+        window.addEventListener('touchcancel', function () { scheduleGlobalScan(100); }, { passive: true });
+        // 任何一次"鼠标离开窗口"也把桌面端的 pressed 清掉（对应桌面端 drag-outside-window 卡死场景）
+        window.addEventListener('mouseup', function () { scheduleGlobalScan(200); }, { passive: true });
+        // 页面切后台回来 / 解锁 / 从其他 app 切回 —— setTimeout 可能冻结错过，回来立即扫。
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') {
+                forceReleaseStalePressed(allButtons);
+                scheduleGlobalScan(100);
+            }
+        });
+        // 页面被点击任何位置（兜底：iOS 合成 click 触发后仍有残留 pressed）
+        document.addEventListener('click', function () { scheduleGlobalScan(260); }, { passive: true });
     }
 
     // ========================================

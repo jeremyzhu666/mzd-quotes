@@ -238,6 +238,10 @@ main { display: block; }
     border-radius: 50%;
     border: 1px solid var(--line);
     transition: transform 80ms linear, border-color var(--transition);
+    /* iOS Safari：按钮级显式清除自带灰色高亮，
+     * 避免系统 tap-highlight 视觉残留与我们的 .pressed 反色叠加，
+     * 真机上看起来像"点完反色卡住回不去"。 */
+    -webkit-tap-highlight-color: transparent;
 }
 .theme-btn:hover { transform: scale(1.08); }
 /* 【关键修复】移除 :active 伪类依赖 — iOS Safari 经典 bug：
@@ -325,6 +329,10 @@ main { display: block; }
     align-items: center;
     text-align: center;
     gap: 0;                                  /* 间距由 ::before 分隔符的 margin-left/right 精确控制 */
+    /* iOS Safari：按钮级显式清除自带灰色 tap 高亮，
+     * 避免系统半透明灰块 + 我们 .pressed 反色叠加视觉残留，
+     * 真机上表现为"点完一次反色回不去"。 */
+    -webkit-tap-highlight-color: transparent;
 }
 .action-btn:hover {
     background-color: var(--text);
