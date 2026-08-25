@@ -98,14 +98,15 @@ a, button, [role="button"], input, textarea, select {
 }
 
 .site-title {
+    /* 与词牌名（.poem-source）同一套样式，保持秩序与统一感 */
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Heiti SC", "SimHei", sans-serif;
-    font-size: 13px;
-    font-weight: 400;
-    letter-spacing: 0.18em;
-    line-height: 1;
+    font-size: clamp(14px, 2vw, 16px);
+    font-weight: 300;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
     color: var(--text-secondary);
+    text-align: center;
     transition: color var(--transition);
-    text-indent: 0.18em; /* 视觉居中补偿：抵消末尾字距右侧留白 */
 }
 
 /* ========================================
@@ -345,11 +346,6 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
         padding-bottom: 12px;
     }
 
-    .site-title {
-        font-size: 12px;
-        letter-spacing: 0.15em;
-        text-indent: 0.15em;
-    }
 
     .poem-text {
         margin-bottom: 24px;
