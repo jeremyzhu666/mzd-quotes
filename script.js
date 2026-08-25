@@ -708,8 +708,10 @@
             try { e.preventDefault && e.preventDefault(); } catch (_) {}
             try { e.stopPropagation && e.stopPropagation(); } catch (_) {}
             // 空格键独立按压路径：与按钮 click/mouse/touch 完全解耦
-            //   keydown   → setPressedOn（保持 pressed 直到 keyup）+ 调 generatePoem（内部节流锁 180ms 防重）
-            //   keyup     → triggerPressed(120ms 拖尾)，与桌面鼠标抬起体验一致
+            //   keydown   → setPressedOn（保持 pressed 直到 keyup 后拖尾释放）+ 调 generatePoem（内部节流锁 180ms 防重）
+            //   keyup     → 直接挂 120ms 拖尾 setPressedOff（不再用 triggerPressed 重复 setPressedOn，
+            //               避免与 blur→setPressedOff / maxHoldTimers / mouse 路径等多分支状态机叠加冲突。
+            //               快速 tap 空格时（keydown→keyup 只有 30ms），120ms 拖尾保证肉眼仍能看到反色）
             setPressedOn(generateBtn);
             if (!e.repeat) generatePoem();
         };
@@ -717,7 +719,18 @@
             if (!isSpaceEvent(e)) return;
             if (isEditableTarget(e.target)) return;
             try { e.preventDefault && e.preventDefault(); } catch (_) {}
-            triggerPressed(generateBtn, 120);
+            try { e.stopPropagation && e.stopPropagation(); } catch (_) {}
+            if (!generateBtn) return;
+            // 简化：不再用 triggerPressed（会再次 setPressedOn 一次，多余且易冲突），
+            // 而是直接挂短拖尾后 setPressedOff。keydown 时已经 setPressedOn，
+            // pressed 类一直保留，直到拖尾到期释放，与桌面鼠标体验一致。
+            const existingTrail = pressedTimers.get(generateBtn);
+            if (existingTrail) { clearTimeout(existingTrail); pressedTimers.delete(generateBtn); }
+            const HOLD_MS = 120;
+            const trailId = setTimeout(function () {
+                setPressedOff(generateBtn);
+            }, HOLD_MS);
+            pressedTimers.set(generateBtn, trailId);
         };
         // capture=true：事件在捕获阶段就拦截，防止焦点元素吞事件
         document.addEventListener('keydown', onPress, true);
