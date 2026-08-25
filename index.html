@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 修复移动端双击缩放：maximum-scale=1 + user-scalable=no 结合 CSS touch-action 彻底抑制 iOS 双击放大 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Verses — 诗词生成器</title>
     <meta name="description" content="极简、克制、充满秩序感的诗词随机生成与图片分享工具。">
     <meta property="og:title" content="Verses — 诗词生成器">
