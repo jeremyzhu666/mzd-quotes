@@ -43,7 +43,6 @@ body[data-theme="gray"] {
 html {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
-    /* 禁止 iOS 双击缩放的关键 CSS 规则：manipulation 允许滚动/捏合，但禁用双击手势缩放 */
     touch-action: manipulation;
 }
 
@@ -56,13 +55,11 @@ body {
     transition: background-color var(--transition), color var(--transition);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* 配合 viewport 的 meta 标签，彻底抑制 iOS 上点击/双击意外放大 */
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     overflow-x: hidden;
 }
 
-/* 移除所有可点击元素的点击高亮与默认双击缩放行为 */
 a, button, [role="button"], input, textarea, select {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
@@ -82,6 +79,28 @@ a, button, [role="button"], input, textarea, select {
 }
 
 /* ========================================
+   Site Header
+   ======================================== */
+.site-header {
+    width: 100%;
+    padding-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    touch-action: manipulation;
+}
+
+.site-title {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Heiti SC", "SimHei", sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    line-height: 1;
+    color: var(--text-secondary);
+    transition: color var(--transition);
+}
+
+/* ========================================
    Poem Area
    ======================================== */
 .poem-area {
@@ -91,7 +110,6 @@ a, button, [role="button"], input, textarea, select {
     justify-content: center;
     align-items: center;
     padding: 64px 0;
-    /* 诗词区也禁用双击缩放，防止用户在文字上双击触发 */
     touch-action: manipulation;
 }
 
@@ -129,7 +147,6 @@ a, button, [role="button"], input, textarea, select {
     padding-top: 24px;
 }
 
-/* Theme Switcher */
 .theme-switcher {
     display: flex;
     gap: 16px;
@@ -183,7 +200,6 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
     outline-offset: 2px;
 }
 
-/* Action Buttons — 两行排布 */
 .actions {
     display: flex;
     flex-direction: column;
@@ -279,6 +295,15 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
 @media (max-width: 768px) {
     .container {
         padding: 24px;
+    }
+
+    .site-header {
+        padding-bottom: 16px;
+    }
+
+    .site-title {
+        font-size: 12px;
+        letter-spacing: 0.15em;
     }
 
     .poem-area {

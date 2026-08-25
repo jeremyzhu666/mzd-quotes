@@ -2,7 +2,6 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <!-- 修复移动端双击缩放：maximum-scale=1 + user-scalable=no 结合 CSS touch-action 彻底抑制 iOS 双击放大 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Verses — 诗词生成器</title>
     <meta name="description" content="极简、克制、充满秩序感的诗词随机生成与图片分享工具。">
@@ -11,12 +10,15 @@
     <meta property="og:type" content="website">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Noto Serif SC（思源宋体 Google 版）覆盖简体中文全量常用字符；Inter 用于英文与辅助信息 -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Serif+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="white">
     <main class="container">
+        <header class="site-header">
+            <h1 class="site-title">主席诗词随机生成工具</h1>
+        </header>
+
         <section class="poem-area" id="poemArea">
             <p class="poem-text" id="poemText">雄关漫道真如铁，而今迈步从头越。</p>
             <p class="poem-source" id="poemSource">—— 忆秦娥·娄山关</p>
