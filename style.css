@@ -454,47 +454,49 @@ main { display: block; }
     }
 
     /* =============================================================
-     * 移动端文字渲染专项修复 — 解决"宋体字太细/粘连/奇怪的 fallback 字形"问题
+     * 移动端文字渲染 —— 与桌面端完全一致（修复 iOS 渲染不一致问题）
+     *  关键原则：字体族顺序 · 字重 · 行高 · 字距 · 抗锯齿 —— 全部继承桌面端定义，
+     *           移动端不在这些视觉参数上做任何差异化，确保两端 100% 观感一致。
+     *
+     *  （之前"专项加粗字重 500 / subpixel 抗锯齿"反而让 iOS 和桌面端渲染风格不同，
+     *    现在由统一的字体加载门控（opacity 0 → 字形真实就绪才淡入）保证 fallback
+     *    阶段对用户不可见，所以不再需要针对移动端单独调字重来"掩盖 fallback 观感"。）
      * ============================================================= */
 
-    /* 1. 诗句：字重加重 + 行高放宽 + 字距收紧，避免过细过挤 */
     .poem-text {
-        font-weight: 500;
-        line-height: 1.4;
-        letter-spacing: 0.02em;
-        /* subpixel 抗锯齿：移动端 Retina 屏让宋体笔划更扎实，避免 antialiased 过细 */
-        -webkit-font-smoothing: subpixel-antialiased;
-        -moz-osx-font-smoothing: auto;
+        /* —— 与桌面端完全相同：font-weight 400 / line-height 1.26 / letter-spacing 0.04em —— */
+        font-weight: 400;
+        line-height: 1.26;
+        letter-spacing: 0.04em;
+        /* 抗锯齿也统一为桌面端的 antialiased，两端灰度渲染一致 */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
         text-rendering: optimizeLegibility;
-        /* 与桌面端统一：自动换行走 balance 平衡分行策略，
-         * 保证两端对非 7+7 长句的分行规则一致。
-         * 7+7 句式的强制换行由 JS 插入真实 <br> 决定，不受 text-wrap 影响。 */
+        /* 分行策略：两端统一 text-wrap: balance + white-space: pre-wrap，
+         * 七言 7+7 句式的强制分行由 JS 真实 <br> 保证，不受设备影响 */
         text-wrap: balance;
-        /* 双保险：显式与桌面端对齐。虽然 DOM 已改为真实 <br> 不依赖 white-space，
-         * 但避免 text-wrap longhand 让 shorthand white-space: pre-wrap 语义失效。 */
         white-space: pre-wrap;
         overflow-wrap: break-word;
         word-break: break-word;
-        /* 字体族：优先思源宋体（Noto/Source Han），加载成功前系统宋作为临时兜底，
-         * 但最终必须渲染为用户想要的思源宋体，与桌面端字体风格一致。 */
+        /* 字体族顺序完全沿用桌面端定义（下面显式写一遍与 desktop .poem-text 一字不差），
+         * 杜绝"移动端 PingFang/冬青黑插在系统宋前面"导致的 fallback 字形差异 */
         font-family: "Noto Serif SC", "Source Han Serif SC", "Source Han Serif CN",
-                     "Songti SC", "STSong", "PingFang SC", "Hiragino Sans GB",
-                     "SimSun", "Microsoft YaHei",
-                     "WenQuanYi Bitmap Song", "AR PL UMing CN", "AR PL SungtiL GB",
-                     "Heiti SC", "SimHei",
-                     serif;
+                     "Songti SC", "STSong", "SimSun", "WenQuanYi Bitmap Song",
+                     "AR PL UMing CN", "AR PL SungtiL GB", "PingFang SC", serif;
     }
 
-    /* 2. 词牌名/出处：次级色已弱化，但移动端不能太细，字重 +100 到 400 */
+    /* 词牌名/出处：字重 300，与桌面端 .poem-source 完全一致 */
     .poem-source {
-        font-weight: 400;
-        -webkit-font-smoothing: subpixel-antialiased;
+        font-weight: 300;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
 
-    /* 3. header 标题：与词牌名同样式，同步取消细字重 */
+    /* header 标题：字重 300，与桌面端 .site-title 完全一致 */
     .site-title {
-        font-weight: 400;
-        -webkit-font-smoothing: subpixel-antialiased;
+        font-weight: 300;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
 }
 

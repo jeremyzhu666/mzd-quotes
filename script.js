@@ -33,37 +33,120 @@
     };
 
     /* ==============================================================
-     * Font loading gate (eliminate FOUT / visible glyph jump)
-     * Release conditions — winner takes first:
-     *   1. document.fonts.ready resolves — fonts all available
-     *   2. setTimeout 3000 ms — network / blocked CDN fallback
-     *   3. CSS @keyframes 3200 ms — JS disabled / throws safety net
+     * Font loading gate — eliminate FOUT / "iOS half-rendered then jump"
+     *  显示策略（两端 100% 一致）：
+     *    body opacity=0 保持黑盒 → 字体字形真实验证通过 → 一次性加 fonts-loaded → 淡入
+     *
+     *  三重验证机制（winner takes last，缺一不可）：
+     *   1. document.fonts.load() 显式预加载 4 个关键字重（Noto Serif SC 400/500、Inter 300/400）
+     *      —— iOS Safari 的 document.fonts.ready 只会被动解析 CSS，不会主动去拉没用到的字重，
+     *         必须显式 load 才能保证真的发起请求。
+     *   2. Canvas measureText 字形实体验证（对比 Noto/Inter vs 强制 fallback 字体的宽度差）
+     *      —— 解决 iOS document.fonts.ready 虚假 resolve（浏览器说"好了"但字形还在路上）。
+     *         Noto Serif SC 和系统宋体（Songti SC）的字形宽度不同，Inter 和系统 sans 也不同，
+     *         measureText 宽度相同 → 还在 fallback → 继续轮询；宽度不同 → 真实加载完成。
+     *   3. setTimeout 3000ms 兜底 + CSS @keyframes 3200ms 终极兜底
+     *      —— 网络不通 / 被屏蔽时，JS/CSS 两道独立保险保证页面不会永远白屏。
      * ============================================================== */
     (function unlockWhenFontsReady() {
         var MAX_WAIT_MS = 3000;
+        var POLL_INTERVAL_MS = 80;
         var html = document.documentElement;
         if (!html) return;
 
+        var unlocked = false;
         function unlock() {
+            if (unlocked) return;
+            unlocked = true;
             if (html.classList && !html.classList.contains('fonts-loaded')) {
                 html.classList.add('fonts-loaded');
             }
         }
 
+        // ============= 验证 2：Canvas measureText 字形实体验证 =============
+        // 用一个生僻词（含"红橙黄绿青蓝紫"里不容易命中字形回退的笔画）作测试，
+        // 对比"目标字体"和"强制 fallback 到系统字体"的渲染宽度：
+        //   相同 → 目标字体还没加载（浏览器用 fallback 替代渲染）→ 继续等
+        //   不同 → 目标字体真实 glyph 已就绪 → 可以解锁
+        var _probeCanvas = null;
+        var _probeCtx = null;
+        try {
+            _probeCanvas = document.createElement('canvas');
+            _probeCtx = _probeCanvas.getContext('2d');
+        } catch (_) { _probeCtx = null; }
+
+        function getTextWidth(family, weight, size, text) {
+            if (!_probeCtx) return -1;
+            try {
+                _probeCtx.font = weight + ' ' + size + 'px ' + family;
+                return _probeCtx.measureText(text).width;
+            } catch (_) { return -1; }
+        }
+        // 测试文本：必须含笔画丰富的字（生僻字 + 常用字混合），确保 fallback 和目标字体宽度有差
+        var PROBE_TEXT = '赤橙黄绿青蓝紫，谁持彩练当空舞？Verses';
+        function fontsReallyAvailable() {
+            if (!_probeCtx) return true; // 不支持 Canvas 就跳过真实验证，走 timeout 兜底
+            // Noto Serif SC 400  vs  Songti SC（系统宋 fallback）
+            var notoW = getTextWidth('"Noto Serif SC", "Source Han Serif SC", serif', '400', 40, PROBE_TEXT);
+            var songW = getTextWidth('"Songti SC", "STSong", "SimSun", serif', '400', 40, PROBE_TEXT);
+            // Inter 300  vs  system-ui sans fallback
+            var interW = getTextWidth('"Inter", sans-serif', '300', 20, 'Verses · 主席诗词随机生成工具');
+            var sansW  = getTextWidth('-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif', '300', 20, 'Verses · 主席诗词随机生成工具');
+            if (notoW < 0 || interW < 0) return true; // 度量失败就跳过
+            var notoSansDiff = (interW !== sansW);   // Inter 真的到了
+            var notoSerifDiff = (notoW !== songW);   // Noto Serif SC 真的到了
+            return notoSansDiff && notoSerifDiff;
+        }
+
+        // 硬上限兜底：无论如何 3s 必解锁
         var fallbackTimer = setTimeout(unlock, MAX_WAIT_MS);
 
-        try {
-            if (document.fonts &&
-                typeof document.fonts.ready !== 'undefined' &&
-                document.fonts.ready &&
-                typeof document.fonts.ready.then === 'function') {
-                document.fonts.ready.then(function () {
-                    clearTimeout(fallbackTimer);
-                    unlock();
-                }).catch(function () { unlock(); });
+        function pollUntilGlyphsReady() {
+            if (unlocked) return;
+            if (fontsReallyAvailable()) {
+                unlock();
+                try { clearTimeout(fallbackTimer); } catch (_) {}
+                return;
             }
-            // else: keep fallback timer running; CSS animation at 3.2s also backs up
-        } catch (e) { unlock(); }
+            // 继续轮询，直到 glyphs 真到了或 MAX_WAIT_MS 兜底触发
+            setTimeout(pollUntilGlyphsReady, POLL_INTERVAL_MS);
+        }
+
+        // ============= 验证 1：document.fonts.load() 显式预加载关键字重 =============
+        try {
+            if (document.fonts && typeof document.fonts.load === 'function') {
+                // 实际会用到的 4 个 weight：
+                //   Noto Serif SC 400（桌面端诗句）、500（移动端诗句）
+                //   Inter 300（标题/出处字重 300）、400（按钮字重 400）
+                // iOS Safari 不会像桌面 Chrome 那样把 CSS 里声明的全部 weight 都主动预加载，
+                // 必须一个个显式 load() 才会真的发起请求。
+                var loads = [
+                    document.fonts.load('400 40px "Noto Serif SC"', PROBE_TEXT),
+                    document.fonts.load('500 40px "Noto Serif SC"', PROBE_TEXT),
+                    document.fonts.load('300 20px "Inter"', 'VersesChair'),
+                    document.fonts.load('400 20px "Inter"', 'VersesChair')
+                ];
+                Promise.all(loads).then(function () {
+                    // 所有 load() resolve → 开始轮询真实验证（glyph 是否真的画出来不同宽度）
+                    pollUntilGlyphsReady();
+                }).catch(function () {
+                    // 有请求失败也不直接放弃，先轮询看是否部分可用
+                    pollUntilGlyphsReady();
+                });
+                // 同时 document.fonts.ready 作为第二个信号（有比没有好），
+                // resolve 后再触发一轮验证（避免遗漏）
+                if (document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+                    document.fonts.ready.then(function () { pollUntilGlyphsReady(); }).catch(function () {});
+                }
+            } else {
+                // 老旧浏览器无 document.fonts → 直接启动轮询，看 Canvas 能否分辨；
+                // 最差情况 MAX_WAIT_MS 兜底会解锁
+                pollUntilGlyphsReady();
+            }
+        } catch (e) {
+            // 异常兜底：立刻启动轮询（最差也是 MAX_WAIT_MS 必解锁）
+            try { pollUntilGlyphsReady(); } catch (_) { unlock(); }
+        }
     })();
 
     // ========================================

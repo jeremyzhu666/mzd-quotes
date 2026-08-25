@@ -10,7 +10,11 @@
     <meta property="og:type" content="website">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Serif+SC:wght@300;400;500;600;700&display=block" rel="stylesheet">
+    <!-- display=swap：字体可见性完全由我们自己的 opacity 门控统一接管。
+         iOS Safari 上 Google Fonts 自带的 display=block 解锁时机与我们的 fonts-loaded 门控时序打架，
+         会导致"opacity 先淡入 → 字体后加载"的半渲染观感。改为 swap 后，两套机制的冲突消除：
+         我们的 opacity 门控（真实度量字形后才淡入）成为唯一的显示开关，两端完全一致。 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Serif+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="white" tabindex="-1" style="outline: none;">
