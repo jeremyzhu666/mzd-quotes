@@ -243,7 +243,7 @@ main { display: block; }
     justify-content: center;
     align-items: center;
     text-align: center;
-    gap: 14px;
+    gap: 0px; /* 默认 0，桌面有键盘时才放大到 14 */
 }
 .action-btn:hover {
     background-color: var(--text);
@@ -291,6 +291,14 @@ main { display: block; }
     opacity: 1;
 }
 
+
+/* 桌面端（有物理键盘 + 细指针）才显示按钮内提示并给足间距 */
+@media (pointer: fine) and (min-width: 769px) {
+    .action-btn {
+        gap: 14px;
+    }
+}
+
 /* ===== Toast 提示 ===== */
 .toast {
     position: fixed;
@@ -315,7 +323,15 @@ main { display: block; }
 }
 
 /* ===== 响应式：移动端与窄屏 ===== */
-@media (max-width: 768px) {
+/* =========================================
+ *  移动端 / 触屏设备：
+ *  - 隐藏「按空格键切换」提示（手机没键盘，提示无意义）
+ *  - 按钮内 gap 收紧，更贴合"仅主文"的视觉尺寸
+ *  判定维度：
+ *    max-width: 768px → 手机窄屏
+ *    pointer: coarse → iPad/触屏设备（即使宽屏也不显示）
+ * ========================================= */
+@media (max-width: 768px), (pointer: coarse) {
     :root {
         --container-padding-x: clamp(20px, 5vw, 28px);
         --container-padding-y: clamp(24px, 6vh, 36px);
@@ -335,6 +351,11 @@ main { display: block; }
     }
     .action-btn {
         padding: 13px 16px;
+        gap: 0;  /* 移动端不显示提示时，内部 gap 置 0 更紧凑 */
+    }
+    /* 隐藏空格键提示（跨端语义：触屏无物理键盘） */
+    .btn-hint {
+        display: none !important;
     }
 }
 

@@ -377,8 +377,24 @@
 
     // ========================================
     // Keyboard Shortcut — 空格键切换 + 按钮按压视觉
+    //   只在"有物理键盘（细指针）且非触屏"的桌面端绑定
+    //   移动端 / 触屏设备没有 Space 键，绑定既浪费也与 UI 隐藏的语义不符
     // ========================================
+    function isFinePointerWithKeyboard() {
+        // 优先用 matchMedia 的 pointer: fine 判定（有细指针的设备通常有键盘）
+        try {
+            if (window.matchMedia && window.matchMedia('(pointer: fine)').matches) return true;
+        } catch (e) { /* 忽略 */ }
+        // 兜底：非触屏设备且 UA 看起来是桌面浏览器
+        const ua = (navigator.userAgent || '').toLowerCase();
+        const isMobileUA = /iphone|ipad|ipod|android|harmonyos|openharmony|mobile|tablet|kindle|silk|touch|webos/i.test(ua);
+        const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+        return !isMobileUA && !hasTouch;
+    }
+
     function initKeyboard() {
+        if (!isFinePointerWithKeyboard()) return; // 移动端 / 触屏：不绑定空格键
+
         // keydown：按下瞬间加 pressed 类 + 触发生成
         document.addEventListener('keydown', function (e) {
             if (e.code === 'Space') {
@@ -438,6 +454,14 @@
     // Initialize
     // ========================================
     function init() {
+        // 移动端 / 触屏：DOM 层面移除「按空格键切换」提示，
+        // 作为 CSS @media 之外的一层兜底，保证任何端（含老旧浏览器）都看不到这条提示。
+        if (!isFinePointerWithKeyboard()) {
+            document.querySelectorAll('.btn-hint').forEach(function (el) {
+                el.parentNode && el.parentNode.removeChild(el);
+            });
+        }
+
         const list = getPoems();
         if (!list.length) {
             poemText.textContent = '数据加载失败';
