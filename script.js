@@ -6,8 +6,9 @@
     // ========================================
     let currentIndex = -1;
     let toastTimer = null;
-    let pressedTimers = new WeakMap();       // btn element -> timeout id
-    const touchLockUntil = new WeakMap();    // btn element -> ms 时间戳，此时间内忽略兼容性 mouse* 事件
+    let pressedTimers = new WeakMap();       // btn element -> timeout id（拖尾释放）
+    const touchLockUntil = new WeakMap();    // btn element -> ms 时间戳，此时间内忽略兼容性 mouse* 事件（桌面路径用）
+    const maxHoldTimers = new WeakMap();     // btn element -> timeout id（1500ms 强制释放保安锁：所有路径兜底）
     let generateThrottleTimer = null;        // generatePoem 节流锁，防止空格+click 双重触发
 
     // ========================================
@@ -256,26 +257,48 @@
 
     /**
      * 按钮按压态底层开关
-     *   setPressedOn  —— 立即进入 pressed 反色态（如果有 pending 释放定时器，先清掉）
-     *   setPressedOff —— 立即退出 pressed 态，同时清理 pending 的释放定时器
-     * 统一入口：所有 mouse/touch/keyboard/click 的按压视觉都走这两个函数，
-     * 避免各自加 class / 清 class 导致状态错乱。
+     *   setPressedOn  —— 立即进入 pressed 反色态
+     *     · 如果有 pending 释放定时器（pressedTimers），先清掉
+     *     · 同时挂 1500ms 强制释放（保安锁 maxHoldTimers）——无论什么原因
+     *       （兼容事件打架、业务异常、触摸中断等），超过 1.5s 必释放，杜绝卡死。
+     *   setPressedOff —— 立即退出 pressed 态，同时清理 pressedTimers + maxHoldTimers。
+     * 统一入口：所有 mouse/touch/keyboard/click 的按压视觉都走这两个函数。
      */
     function setPressedOn(btn) {
         if (!btn) return;
+        // 拖尾定时器
         const existing = pressedTimers.get(btn);
         if (existing) {
             clearTimeout(existing);
             pressedTimers.delete(btn);
         }
+        // 保安锁：最长 1500ms 无论如何强制释放
+        const existingMax = maxHoldTimers.get(btn);
+        if (existingMax) {
+            clearTimeout(existingMax);
+            maxHoldTimers.delete(btn);
+        }
+        const FORCE_RELEASE_MS = 1500;
+        const maxId = setTimeout(function () {
+            try { btn.classList.remove('pressed'); } catch (_) {}
+            try { maxHoldTimers.delete(btn); } catch (_) {}
+        }, FORCE_RELEASE_MS);
+        maxHoldTimers.set(btn, maxId);
         btn.classList.add('pressed');
     }
     function setPressedOff(btn) {
         if (!btn) return;
+        // 拖尾定时器清理
         const existing = pressedTimers.get(btn);
         if (existing) {
             clearTimeout(existing);
             pressedTimers.delete(btn);
+        }
+        // 保安锁也清理（正常释放，不需要它兜底了）
+        const existingMax = maxHoldTimers.get(btn);
+        if (existingMax) {
+            clearTimeout(existingMax);
+            maxHoldTimers.delete(btn);
         }
         btn.classList.remove('pressed');
     }
@@ -353,7 +376,9 @@
             btn.addEventListener('click', function () {
                 const theme = btn.getAttribute('data-theme');
                 setTheme(theme);
-                triggerPressed(btn, 140);
+                /* 按压视觉统一由 initEvents 中的 touch/mouse 事件负责，
+                 * 业务层 click 处理函数不再重复调用 triggerPressed，
+                 * 避免与事件层叠加导致状态机错乱。 */
             });
         });
     }
@@ -373,7 +398,8 @@
             showToast('数据加载中，请稍后再试');
             return;
         }
-        triggerPressed(copyBtn, 140);
+        /* 按压视觉统一由 initEvents 中的 touch/mouse 事件负责，
+         * 业务函数内不再重复 triggerPressed，避免事件层与业务层叠加冲突。 */
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(url).then(function () {
@@ -514,7 +540,8 @@
         const theme = body.getAttribute('data-theme') || 'white';
         const colors = themeConfig[theme];
 
-        triggerPressed(downloadBtn, 180);
+        /* 按压视觉统一由 initEvents 中的 touch/mouse 事件负责，
+         * 业务函数内不再重复 triggerPressed，避免事件层与业务层叠加冲突。 */
         downloadBtn.setAttribute('disabled', 'true');
 
         waitForFonts().then(function () {
