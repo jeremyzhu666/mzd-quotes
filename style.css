@@ -243,7 +243,7 @@ main { display: block; }
     justify-content: center;
     align-items: center;
     text-align: center;
-    gap: 10px;
+    gap: 14px;
 }
 .action-btn:hover {
     background-color: var(--text);
@@ -260,30 +260,34 @@ main { display: block; }
     outline-offset: 3px;
 }
 
-/* —— 内嵌键位提示：Space 空格（视觉为小键位徽标，不占外部高度） —— */
+/* —— 按钮内提示：主文 + 明确的操作说明 —— */
 .btn-label {
     display: inline-block;
     line-height: 1.2;
-}
-.btn-key {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: "Inter", system-ui, -apple-system, sans-serif;
-    font-size: 11px;
     font-weight: 500;
+    letter-spacing: 0.06em;
+}
+.btn-hint {
+    display: inline-block;
+    line-height: 1.2;
+    font-family: "Inter", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 12px;
+    font-weight: 400;
     letter-spacing: 0.04em;
-    line-height: 1;
-    padding: 4px 8px;
-    border-radius: var(--radius);
-    border: 1px solid currentColor;
     opacity: 0.85;
     color: inherit;
     transition: opacity var(--transition);
 }
-.action-btn:hover .btn-key,
-.action-btn:active .btn-key,
-.action-btn.pressed .btn-key {
+.btn-hint::before {
+    content: "·";
+    display: inline-block;
+    margin: 0 8px 0 2px;
+    opacity: 0.5;
+    font-weight: 500;
+}
+.action-btn:hover .btn-hint,
+.action-btn:active .btn-hint,
+.action-btn.pressed .btn-hint {
     opacity: 1;
 }
 
