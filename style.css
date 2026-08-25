@@ -434,6 +434,11 @@ main { display: block; }
         text-rendering: optimizeLegibility;
         /* 移动端兼容性一般且我们已有强制分行逻辑，去掉 balance */
         text-wrap: wrap;
+        /* 双保险：显式与桌面端对齐。虽然 DOM 已改为真实 <br> 不依赖 white-space，
+         * 但避免 text-wrap longhand 让 shorthand white-space: pre-wrap 语义失效。 */
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        word-break: break-word;
         /* 字体族：优先思源宋体（Noto/Source Han），加载成功前系统宋作为临时兜底，
          * 但最终必须渲染为用户想要的思源宋体，与桌面端字体风格一致。 */
         font-family: "Noto Serif SC", "Source Han Serif SC", "Source Han Serif CN",

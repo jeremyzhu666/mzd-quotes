@@ -161,35 +161,70 @@
 
 
     /**
-     * 针对「七言句式（7字，7字句号）」做强制分行：逗号后插入 \n
-     * —— 严格按用户需求只处理：前 7 非标点汉字 + 逗号 + 后 7 非标点汉字 + 句号
-     * 同时支持整首七言绝句 / 七律中出现多组该结构（全局匹配）
+    /* ================================================================
+     * 【独立换行逻辑——桌面端 / 移动端 / 导出图片 三者共用，完全一致】
      *
-     * 例如：红军不怕远征难，万水千山只等闲。
-     *        ↓
-     *       红军不怕远征难\n万水千山只等闲。
+     * 用户要求："移动端诗词换行逻辑和桌面端同步，逻辑单独写，很重要"。
+     * 历史根因：之前靠 textContent + \n + white-space: pre-wrap 换行，
+     *   但移动端 @media 单独写了 longhand `text-wrap: wrap`（CSS Text 4
+     *   把 white-space 拆成 white-space-collapse / text-wrap 等 longhand，
+     *   单独声明 text-wrap 会让 shorthand white-space 的 pre-wrap 语义失效，
+     *   导致 \n 在移动端被折叠成空格，看起来"桌面有换行、移动端没有"）。
      *
-     * 其他结构（任意非 7+7 组合）一律不改动，避免对其他诗体产生全局副作用。
-     * 保留原标点（逗号消失是因为变成了 \n，句号仍保留在行末）。
-     */
-    function formatPoemForDisplay(text) {
-        if (typeof text !== 'string' || !text) return '';
-        const SEVEN = '[^\\s，。！？、,.!?；;：:「」『』\[\]()（）《》\-—·…\dA-Za-z]{7}';
-        const pattern = new RegExp(
-            '(?<left>' + SEVEN + ')'        // 前 7 字
-          + '[,，]'                        // 逗号（中英文）
-          + '(?<right>' + SEVEN + ')'      // 后 7 字
-          + '[。.](?![，。！？])',          // 句号（中英文），后面不再紧跟其他句末标点
+     * 解  决：不依赖任何 CSS white-space 语义，用真实 <br> 节点做物理换行，
+     *   + 纯函数 splitSevenSevenPoem() 保证 7,7. 拆分逻辑唯一来源，
+     *   桌面 DOM / 移动端 DOM / Canvas 导出图 三者 100% 一致。
+     * ================================================================ */
+
+    // (1) 纯拆分函数：字符串 → { lines: string[], isSevenSeven: boolean }
+    //     无 DOM 依赖，可给 DOM 渲染 / Canvas 绘制 / 旧 formatPoemForDisplay 复用
+    function splitSevenSevenPoem(text) {
+        if (typeof text !== 'string' || !text) {
+            return { lines: [], isSevenSeven: false };
+        }
+        var SEVEN = '[^\\s，。！？、,.!?；;：:「」『』\[\]()（）《》\-—·…\dA-Za-z]{7}';
+        var pattern = new RegExp(
+            '(?<left>' + SEVEN + ')'
+          + '[,，]'
+          + '(?<right>' + SEVEN + ')'
+          + '[。.](?![，。！？])',
             'g'
         );
-        let result = text.replace(pattern, function (m, left, right) {
-            // 保留：左 7 字 + \n + 右 7 字 + 句号（句号在 match 中被 pattern 包含，所以手动拼回来）
-            // 因为 pattern 的句号 (?![，。！？]) 是零宽后行取反，没有消费字符 —— 不，上面写的是 [。.](?!) 消费了句号
-            // 所以我们直接把最后一位（句号/点）取出来，再 + \n + 后面 + 句号
-            const lastChar = m.charAt(m.length - 1); // 就是 [。.]
-            return left + '\n' + right + lastChar;
+        var matched = false;
+        var MARKER = '\u0000LB\u0000';
+        var replaced = text.replace(pattern, function (m, left, right) {
+            matched = true;
+            var lastChar = m.charAt(m.length - 1);
+            return left + MARKER + right + lastChar;
         });
-        return result;
+        if (!matched) {
+            // 非 7+7：保留原文（已有 \n 则尊重，否则一行）
+            var arr = text.split(/\r?\n/).filter(function (s) { return s !== ''; });
+            return {
+                lines: (arr.length === 0 ? [text] : arr),
+                isSevenSeven: false
+            };
+        }
+        return { lines: replaced.split(MARKER), isSevenSeven: true };
+    }
+
+    // (2) DOM 写入函数（桌面端 + 移动端完全同一入口，无端分支）
+    //     插入真实 <br> 换行；文本 HTML escape，与 textContent 安全等级一致。
+    function renderPoemLinesToElement(el, text) {
+        if (!el) return;
+        var split = splitSevenSevenPoem(text);
+        var span = document.createElement('span');
+        var esc = function (s) {
+            span.textContent = s;
+            return span.innerHTML;
+        };
+        el.innerHTML = split.lines.map(esc).join('<br>');
+    }
+
+    // (3) 旧 API 兼容层：formatPoemForDisplay 仍返回 \n 分隔字符串（给 Canvas 等下游）
+    function formatPoemForDisplay(text) {
+        var split = splitSevenSevenPoem(text);
+        return split.lines.join('\n');
     }
 
     function formatDate() {
@@ -248,7 +283,8 @@
         poemSource.style.opacity = '0';
 
         setTimeout(function () {
-            poemText.textContent = formatPoemForDisplay(poem.text);
+            // 桌面端 + 移动端走同一套独立换行逻辑（真实 <br>，不依赖 white-space）
+            renderPoemLinesToElement(poemText, poem.text);
             poemSource.textContent = '—— ' + poem.source;
             poemText.style.transition = 'opacity 100ms ease';
             poemSource.style.transition = 'opacity 100ms ease';
