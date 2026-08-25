@@ -122,7 +122,7 @@ main { display: block; }
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 0 0 clamp(16px, 3vh, 24px) 0;
+    padding: 0 0 clamp(13px, 2.4vh, 19px) 0;  /* -20%：header ↔ 诗词展示区 的垂直留白 */
     flex-shrink: 0;
 }
 .site-title {
@@ -199,14 +199,14 @@ main { display: block; }
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: clamp(16px, 3vh, 24px);
-    padding-top: clamp(16px, 3vh, 24px);
+    gap: clamp(13px, 2.4vh, 19px);         /* -20%：主题切换 ↔ 按钮组 垂直间距 */
+    padding-top: clamp(13px, 2.4vh, 19px); /* 同步收缩容器顶留白 */
 }
 
 /* 主题切换 — 三个点：黑白灰 */
 .theme-switcher {
     display: flex;
-    gap: 16px;
+    gap: 13px;                             /* -20%：黑白灰三点之间水平间距 */
     align-items: center;
     justify-content: center;
 }
@@ -238,7 +238,7 @@ main { display: block; }
 .actions {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 13px;                              /* -20%：主行 ↔ 次行 的垂直间距 */
     width: 100%;
     max-width: 420px;
     align-items: center;
@@ -247,7 +247,7 @@ main { display: block; }
 .action-row {
     display: flex;
     width: 100%;
-    gap: 16px;
+    gap: 13px;                              /* -20%：两副按钮之间的水平间距 */
     align-items: center;
     justify-content: center;
 }
@@ -257,7 +257,7 @@ main { display: block; }
 .action-btn {
     flex: 1;
     min-width: 0;
-    padding: 14px 20px;
+    padding: 11px 16px;                      /* -20%：按钮内部上下左右留白 */
     border: 1px solid var(--text);
     background-color: transparent;
     color: var(--text);
@@ -317,9 +317,9 @@ main { display: block; }
 .btn-hint::before {
     content: "·";
     display: inline-block;
-    margin: 0 8px 0 2px;
+    margin: 0 6px 0 2px;                    /* -20%：分隔点左边距同步收缩 */
     opacity: 0.5;
-    font-weight: 500;
+    font-weight: 400;                       /* 与主文/提示同样 400，不单独加粗 */
 }
 .action-btn:hover .btn-hint,
 .action-btn:active .btn-hint,
@@ -331,7 +331,7 @@ main { display: block; }
 /* 桌面端（有物理键盘 + 细指针）才显示按钮内提示并给足间距 */
 @media (pointer: fine) and (min-width: 769px) {
     .action-btn {
-        gap: 14px;
+        gap: 11px;                           /* -20%：主文 ↔ 按键提示 之间的水平间距 */
     }
 }
 
@@ -376,18 +376,21 @@ main { display: block; }
         min-height: 520px;
     }
     .site-header {
-        padding-bottom: 16px;
+        padding-bottom: 13px;               /* -20%：16 → 13，与桌面 header 同比例收缩 */
+    }
+    .theme-switcher {
+        gap: 13px;                          /* 与桌面同步：黑白灰三点 -20% */
     }
     .actions {
-        gap: 12px;
+        gap: 10px;                          /* -20%：12 → 9.6 ≈ 10，两行按钮之间 */
         max-width: 100%;
     }
     .action-row {
-        gap: 12px;
+        gap: 10px;                          /* -20%：12 → 9.6 ≈ 10，两副按钮之间 */
     }
     .action-btn {
-        padding: 13px 16px;
-        gap: 0;  /* 移动端不显示提示时，内部 gap 置 0 更紧凑 */
+        padding: 10px 13px;                 /* -20%：13→10.4≈10，16→12.8≈13 */
+        gap: 0;                             /* 移动端不显示提示时，内部 gap 置 0 更紧凑 */
     }
     /* 隐藏空格键提示（跨端语义：触屏无物理键盘） */
     .btn-hint {
