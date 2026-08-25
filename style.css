@@ -315,11 +315,12 @@ main { display: block; }
     border-radius: var(--radius);
     transition: background-color var(--transition), color var(--transition);
     display: inline-flex;
-    flex-direction: column;
+    flex-direction: row;                     /* 横向左右布局：label 左 + hint 右 */
+    flex-wrap: nowrap;                       /* 禁止换行：桌面端一行展示，不因为窄屏自动掉到下一行 */
     justify-content: center;
     align-items: center;
     text-align: center;
-    gap: 4px; /* 默认纵向：主文 ↔ 提示文字之间；移动端无 hint 时不影响视觉 */
+    gap: 0;                                  /* 间距由 ::before 分隔符的 margin-left/right 精确控制 */
 }
 .action-btn:hover {
     background-color: var(--text);
@@ -359,8 +360,11 @@ main { display: block; }
     transition: opacity var(--transition);
 }
 .btn-hint::before {
-    display: none;
-    content: none;
+    content: "·";
+    display: inline-block;
+    margin: 0 6px 0 2px;                    /* -20%：分隔点左边距同步收缩 */
+    opacity: 0.5;
+    font-weight: 400;                       /* 与主文/提示同样 400，不单独加粗 */
 }
 .action-btn:hover .btn-hint,
 .action-btn:active .btn-hint,
@@ -372,7 +376,7 @@ main { display: block; }
 /* 桌面端（有物理键盘 + 细指针）才显示按钮内提示并给足间距 */
 @media (pointer: fine) and (min-width: 769px) {
     .action-btn {
-        gap: 6px;                            /* 纵向两行：主文 ↔ 按键提示 之间的垂直间距 */
+        gap: 0;                              /* 横向布局：label · hint 之间的间距由 ::before 分隔符的 margin 精确控制 */
     }
 }
 
