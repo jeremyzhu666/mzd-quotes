@@ -7,6 +7,7 @@
     let currentIndex = -1;
     let toastTimer = null;
     let pressedTimers = new WeakMap();       // btn element -> timeout id
+    const touchLockUntil = new WeakMap();    // btn element -> ms 时间戳，此时间内忽略兼容性 mouse* 事件
     let generateThrottleTimer = null;        // generatePoem 节流锁，防止空格+click 双重触发
 
     // ========================================
@@ -649,27 +650,46 @@
         //  — 移动端：touchstart → setPressedOn；touchend → triggerPressed(100ms) 拖尾；touchcancel → setPressedOff
         //  两端动画完全等价：按下立即变色，抬起后"多显示 100ms 反色"才消失，
         //  避免移动端极快 tap（20-30ms）时颜色一闪而过，肉眼看不到。
+        //  关键修复：移动端 tap 后浏览器会 ~300ms 补发兼容性 mousedown/mouseup 事件，
+        //  如果不拦截，mousedown 会把刚 release 的 pressed class 再加回去，
+        //  甚至某些场景下不再发 mouseup → 按钮"卡死在反色"。
+        //  方案：每次 touch 事件后给该按钮打 700ms 时间锁，锁窗内忽略 mouse* 事件。
+        const TOUCH_LOCK_MS = 700;
+        function markTouchLock(btn, extraMs) {
+            const ms = (typeof extraMs === 'number' && extraMs > 0) ? extraMs : TOUCH_LOCK_MS;
+            touchLockUntil.set(btn, Date.now() + ms);
+        }
+        function isTouchLocked(btn) {
+            const until = touchLockUntil.get(btn);
+            return (typeof until === 'number') && (Date.now() < until);
+        }
         const pressables = [generateBtn, copyBtn, downloadBtn];
         pressables.forEach(function (btn) {
             if (!btn) return;
 
             btn.addEventListener('touchstart', function () {
                 setPressedOn(btn);                // 按下：立即 pressed（变色反馈）
+                markTouchLock(btn, TOUCH_LOCK_MS);
             }, { passive: true });
             btn.addEventListener('touchend', function () {
                 triggerPressed(btn, 100);         // 抬起：多显示 100ms 反色，与桌面端 mouseup 完全一致
+                markTouchLock(btn, TOUCH_LOCK_MS);
             }, { passive: true });
             btn.addEventListener('touchcancel', function () {
                 setPressedOff(btn);               // 取消：立即还原（对应桌面端 mouseleave）
+                markTouchLock(btn, TOUCH_LOCK_MS);
             }, { passive: true });
 
             btn.addEventListener('mousedown', function () {
+                if (isTouchLocked(btn)) return;   // 刚被触摸过，忽略兼容性 mousedown（避免卡死）
                 setPressedOn(btn);
             });
             btn.addEventListener('mouseup', function () {
+                if (isTouchLocked(btn)) return;
                 triggerPressed(btn, 100);         // 桌面鼠标抬起后 100ms 拖尾
             });
             btn.addEventListener('mouseleave', function () {
+                if (isTouchLocked(btn)) return;
                 setPressedOff(btn);               // 鼠标滑出：立刻释放（符合桌面习惯）
             });
             btn.addEventListener('blur', function () {
@@ -680,13 +700,33 @@
         // 三个配色按钮（纸白/墨黑/素灰）也同步同一套按压视觉状态机
         themeBtns.forEach(function (btn) {
             if (!btn) return;
-            btn.addEventListener('touchstart', function () { setPressedOn(btn); }, { passive: true });
-            btn.addEventListener('touchend',   function () { triggerPressed(btn, 80); }, { passive: true }); // 与桌面主题按钮 mouseup 拖尾 80ms 一致
-            btn.addEventListener('touchcancel',function () { setPressedOff(btn); }, { passive: true });
-            btn.addEventListener('mousedown',  function () { setPressedOn(btn); });
-            btn.addEventListener('mouseup',    function () { triggerPressed(btn, 80); });
-            btn.addEventListener('mouseleave', function () { setPressedOff(btn); });
-            btn.addEventListener('blur',       function () { setPressedOff(btn); });
+            btn.addEventListener('touchstart', function () {
+                setPressedOn(btn);
+                markTouchLock(btn, TOUCH_LOCK_MS);
+            }, { passive: true });
+            btn.addEventListener('touchend', function () {
+                triggerPressed(btn, 80);          // 与桌面主题按钮 mouseup 拖尾 80ms 一致
+                markTouchLock(btn, TOUCH_LOCK_MS);
+            }, { passive: true });
+            btn.addEventListener('touchcancel', function () {
+                setPressedOff(btn);
+                markTouchLock(btn, TOUCH_LOCK_MS);
+            }, { passive: true });
+            btn.addEventListener('mousedown', function () {
+                if (isTouchLocked(btn)) return;
+                setPressedOn(btn);
+            });
+            btn.addEventListener('mouseup', function () {
+                if (isTouchLocked(btn)) return;
+                triggerPressed(btn, 80);
+            });
+            btn.addEventListener('mouseleave', function () {
+                if (isTouchLocked(btn)) return;
+                setPressedOff(btn);
+            });
+            btn.addEventListener('blur', function () {
+                setPressedOff(btn);
+            });
         });
     }
 
