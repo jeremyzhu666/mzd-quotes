@@ -44,6 +44,7 @@ html {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
     touch-action: manipulation;
+    height: 100%;
 }
 
 body {
@@ -51,6 +52,7 @@ body {
     background-color: var(--bg);
     color: var(--text);
     line-height: 1.6;
+    height: 100%;
     min-height: 100vh;
     transition: background-color var(--transition), color var(--transition);
     -webkit-font-smoothing: antialiased;
@@ -66,16 +68,20 @@ a, button, [role="button"], input, textarea, select {
 }
 
 /* ========================================
-   Layout
+   Layout — 稳定型三段式：header 顶 / poem-area 中（撑开中间所有空间）/ controls 底
+   这样不管诗句多长或多短，按钮组永远在同一个位置，不会上下跳动。
    ======================================== */
 .container {
     max-width: 640px;
     margin: 0 auto;
-    padding: 48px 24px;
-    min-height: 100vh;
+    padding: 48px 24px 32px;
+    height: 100vh;
+    min-height: 560px;
+    max-height: 100vh;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: flex-start;
+    align-items: stretch;
 }
 
 /* ========================================
@@ -83,10 +89,11 @@ a, button, [role="button"], input, textarea, select {
    ======================================== */
 .site-header {
     width: 100%;
-    padding-bottom: 24px;
+    padding-bottom: 16px;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
+    flex: 0 0 auto;
     touch-action: manipulation;
 }
 
@@ -98,24 +105,30 @@ a, button, [role="button"], input, textarea, select {
     line-height: 1;
     color: var(--text-secondary);
     transition: color var(--transition);
+    text-indent: 0.18em; /* 视觉居中补偿：抵消末尾字距右侧留白 */
 }
 
 /* ========================================
-   Poem Area
+   Poem Area — 占据所有中间高度，诗句在内部绝对居中，
+   且内容多时在自己区域内滚动，绝不影响下方 controls 的位置
    ======================================== */
 .poem-area {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;          /* 关键：允许内容被压缩，避免把父容器撑高 */
+    width: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 64px 0;
+    overflow-y: auto;       /* 超长内容内部滚动，不挤压 controls */
+    overflow-x: hidden;
     touch-action: manipulation;
+    padding: 16px 0;
 }
 
 .poem-text {
     font-family: "Noto Serif SC", "Source Han Serif SC", "Source Han Serif CN", "Songti SC", "STSong", "SimSun", "WenQuanYi Bitmap Song", "AR PL UMing CN", "AR PL SungtiL GB", "PingFang SC", serif;
-    font-size: clamp(32px, 6vw, 64px);
+    font-size: clamp(32px, 5.6vw, 64px);
     font-weight: 400;
     line-height: 1.6;
     letter-spacing: 0.05em;
@@ -123,6 +136,8 @@ a, button, [role="button"], input, textarea, select {
     color: var(--text);
     transition: color var(--transition);
     margin-bottom: 32px;
+    padding: 0 8px;
+    max-width: 100%;
 }
 
 .poem-source {
@@ -134,17 +149,19 @@ a, button, [role="button"], input, textarea, select {
     color: var(--text-secondary);
     text-align: center;
     transition: color var(--transition);
+    padding: 0 8px;
 }
 
 /* ========================================
-   Controls
+   Controls — 永远钉在容器底部，位置不会随诗句内容变化
    ======================================== */
 .controls {
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 48px;
-    padding-top: 24px;
+    gap: 32px;
+    padding-top: 16px;
 }
 
 .theme-switcher {
@@ -203,9 +220,9 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
 .actions {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
+    align-items: center;
     justify-content: center;
-    gap: 16px;
+    gap: 12px;
     width: 100%;
     max-width: 420px;
 }
@@ -226,6 +243,23 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
 
 .action-row-secondary {
     justify-content: center;
+    margin-top: 8px;
+}
+
+/* 空格键提示 */
+.action-hint {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Heiti SC", "SimHei", sans-serif;
+    font-size: 12px;
+    font-weight: 300;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    color: var(--text-secondary);
+    text-align: center;
+    transition: color var(--transition);
+    user-select: none;
+    touch-action: manipulation;
+    margin-top: -2px;
+    margin-bottom: 4px;
 }
 
 .action-btn {
@@ -239,9 +273,14 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
     padding: 12px 32px;
     cursor: pointer;
     border-radius: var(--radius);
-    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+    transition: background-color 120ms ease,
+                color 120ms ease,
+                border-color 120ms ease,
+                transform 100ms ease,
+                box-shadow 120ms ease;
     flex: 1;
     min-width: 0;
+    user-select: none;
 }
 
 .action-btn:hover {
@@ -255,8 +294,12 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
     outline-offset: 2px;
 }
 
-.action-btn:active {
-    transform: translateY(1px);
+/* 按压效果：鼠标/触摸按下 + JS 触发的 .pressed 类（空格键模拟） */
+.action-btn:active,
+.action-btn.pressed {
+    transform: translateY(2px);
+    background-color: var(--text);
+    color: var(--bg);
 }
 
 .action-btn:disabled {
@@ -294,20 +337,18 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
    ======================================== */
 @media (max-width: 768px) {
     .container {
-        padding: 24px;
+        padding: 24px 24px 20px;
+        min-height: 480px;
     }
 
     .site-header {
-        padding-bottom: 16px;
+        padding-bottom: 12px;
     }
 
     .site-title {
         font-size: 12px;
         letter-spacing: 0.15em;
-    }
-
-    .poem-area {
-        padding: 48px 0;
+        text-indent: 0.15em;
     }
 
     .poem-text {
@@ -315,13 +356,19 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
     }
 
     .controls {
-        gap: 32px;
+        gap: 24px;
+        padding-top: 12px;
     }
 }
 
 @media (max-width: 480px) {
+    .container {
+        padding: 20px 16px 16px;
+    }
+
     .actions {
         max-width: 100%;
+        gap: 14px;
     }
 
     .action-row {
@@ -332,12 +379,36 @@ body[data-theme="gray"]  .theme-btn[data-theme="gray"]::after  { border: 1px sol
         min-width: 0;
         width: 100%;
     }
+
+    .action-row-secondary {
+        margin-top: 0;
+    }
+}
+
+/* 极窄屏 + 横屏的高度保险：避免 controls 被挤出视口 */
+@media (max-height: 520px) {
+    .container {
+        height: auto;
+        max-height: none;
+        min-height: 100vh;
+    }
+    .poem-area {
+        padding: 8px 0;
+    }
+    .poem-text {
+        font-size: clamp(28px, 6vh, 44px);
+    }
+    .controls {
+        padding-top: 8px;
+        gap: 20px;
+    }
 }
 
 /* ========================================
    Accessibility — 无 JS 降级
    ======================================== */
 noscript .actions,
-noscript .theme-switcher {
+noscript .theme-switcher,
+noscript .action-hint {
     display: none;
 }

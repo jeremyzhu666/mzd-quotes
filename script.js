@@ -6,6 +6,7 @@
     // ========================================
     let currentIndex = -1;
     let toastTimer = null;
+    let pressedTimers = Object.create(null); // btn id -> timeout id
 
     // ========================================
     // DOM Elements
@@ -29,20 +30,43 @@
     };
 
     // ========================================
-    // Fonts — 覆盖尽量全的系统宋体系列，Noto Serif SC (思源宋体) 优先
+    // Fonts
     // ========================================
-    const POEM_FONT_FAMILY = [
-        '"Noto Serif SC"',          // Google Fonts：思源宋体（在线，覆盖最全简体中文）
-        '"Source Han Serif SC"',    // Adobe：思源宋体
-        '"Source Han Serif CN"',    // Adobe：思源宋体 CN 子集
-        '"Songti SC"',              // macOS 自带：宋体-简
-        '"STSong"',                 // macOS 旧版：华文宋体
+    // 页面展示字体（DOM）：优先思源宋体在线版，失败再回退系统宋体
+    const DISPLAY_SERIF_FAMILY = [
+        '"Noto Serif SC"',
+        '"Source Han Serif SC"',
+        '"Source Han Serif CN"',
+        '"Songti SC"',
+        '"STSong"',
+        '"SimSun"',
+        '"WenQuanYi Bitmap Song"',
+        '"AR PL UMing CN"',
+        '"AR PL SungtiL GB"',
+        '"PingFang SC"',
+        'serif'
+    ].join(', ');
+
+    // Canvas 导出字体（导出优先，必须保证 100% 有字）：
+    //   关键修复 —— 把"系统自带宋体/无衬线兜底"放在最前面，
+    //   Google Fonts 放到最后。避免 Noto Serif SC 未就绪时 Canvas 画空白字，
+    //   导致下载出来只剩一张"白底 / 黑底 / 灰底"的纯色图。
+    const CANVAS_SERIF_FAMILY = [
+        '"Songti SC"',              // macOS：宋体-简（系统自带，可靠）
+        '"STSong"',                 // macOS：华文宋体
+        '"PingFang SC"',            // macOS/iOS：苹方（无衬线兜底，确保字符必存在）
+        '"Hiragino Sans GB"',       // macOS：冬青黑体
         '"SimSun"',                 // Windows：宋体
-        '"WenQuanYi Bitmap Song"',  // Linux：文泉驿点阵宋体
-        '"AR PL UMing CN"',         // Linux：AR PL 大宋体
-        '"AR PL SungtiL GB"',       // Linux：AR PL 宋体 GB
-        '"PingFang SC"',            // macOS/iOS：苹方（无衬线，作为最后兜底以确保字符存在）
-        'serif'                     // 最终通用 serif
+        '"Microsoft YaHei"',        // Windows：微软雅黑（无衬线兜底）
+        '"WenQuanYi Bitmap Song"',  // Linux：文泉驿点阵宋
+        '"AR PL UMing CN"',         // Linux：大宋体
+        '"AR PL SungtiL GB"',       // Linux：宋体 GB
+        '"Heiti SC"',               // 黑体兜底
+        '"SimHei"',                 // 黑体兜底
+        '"Noto Serif SC"',          // Google Fonts（最后使用，仅当它真正就绪时才生效）
+        '"Source Han Serif SC"',
+        '"Source Han Serif CN"',
+        'serif'
     ].join(', ');
 
     const SOURCE_FONT_FAMILY = [
@@ -50,20 +74,24 @@
         '-apple-system',
         'BlinkMacSystemFont',
         '"PingFang SC"',
-        '"Hiragino Sans GB"',       // macOS：冬青黑体
-        '"Microsoft YaHei"',        // Windows：微软雅黑
-        '"WenQuanYi Micro Hei"',    // Linux：文泉驿微米黑
-        '"Heiti SC"',               // macOS：黑体-简
-        '"SimHei"',                 // Windows：黑体
+        '"Hiragino Sans GB"',
+        '"Microsoft YaHei"',
+        '"WenQuanYi Micro Hei"',
+        '"Heiti SC"',
+        '"SimHei"',
         'sans-serif'
     ].join(', ');
 
+    // 确保页面 CSS DOM 展示用的也是统一回退链
+    if (poemText) poemText.style.fontFamily = DISPLAY_SERIF_FAMILY;
+    if (poemSource) poemSource.style.fontFamily = SOURCE_FONT_FAMILY;
+
     // ========================================
-    // Canvas 图片规格
+    // Canvas 图片规格（1080 x 1350，4:5 标准分享图）
     // ========================================
     const CANVAS_W = 1080;
     const CANVAS_H = 1350;
-    const PADDING = 162;              // 左右各 15% 边距
+    const PADDING = 162;
     const POEM_FONT_SIZE = 88;
     const SOURCE_FONT_SIZE = 32;
     const POEM_LINE_HEIGHT = 1.7;
@@ -72,11 +100,18 @@
     // ========================================
     // Utilities
     // ========================================
+    function getPoems() {
+        // 兼容独立文件 poems.js：优先 window.poems，其次全局 poems
+        const list = (typeof window !== 'undefined' && window.poems) || (typeof poems !== 'undefined' ? poems : null);
+        return Array.isArray(list) ? list : [];
+    }
+
     function getRandomIndex() {
-        if (poems.length <= 1) return 0;
+        const list = getPoems();
+        if (list.length <= 1) return 0;
         let idx;
         do {
-            idx = Math.floor(Math.random() * poems.length);
+            idx = Math.floor(Math.random() * list.length);
         } while (idx === currentIndex);
         return idx;
     }
@@ -101,12 +136,8 @@
             + pad(d.getSeconds());
     }
 
-    /**
-     * 等待字体加载完成（最多 5 秒超时），确保 Canvas 使用正确字体渲染。
-     */
     function waitForFonts() {
         if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
-            // ready 返回的 Promise 会在所有字体加载完成后 resolve
             const timeout = new Promise(function (resolve) {
                 setTimeout(resolve, 5000);
             });
@@ -115,11 +146,30 @@
         return Promise.resolve();
     }
 
+    /**
+     * 给按钮一个"被按下去"的视觉反馈（空格键模拟点击时使用）
+     * @param {HTMLElement} btn
+     * @param {number} [duration=140]
+     */
+    function triggerPressed(btn, duration) {
+        if (!btn) return;
+        btn.classList.add('pressed');
+        const id = btn.id || ('__btn_' + Math.random().toString(36).slice(2, 7));
+        if (pressedTimers[id]) clearTimeout(pressedTimers[id]);
+        pressedTimers[id] = setTimeout(function () {
+            btn.classList.remove('pressed');
+            delete pressedTimers[id];
+        }, typeof duration === 'number' ? duration : 140);
+    }
+
     // ========================================
     // Poem Display
     // ========================================
     function displayPoem(index) {
-        const poem = poems[index];
+        const list = getPoems();
+        const poem = list[index];
+        if (!poem) return;
+
         poemText.style.opacity = '0';
         poemSource.style.opacity = '0';
 
@@ -134,8 +184,11 @@
     }
 
     function generatePoem() {
+        const list = getPoems();
+        if (!list.length) return;
         currentIndex = getRandomIndex();
         displayPoem(currentIndex);
+        triggerPressed(generateBtn, 160);
     }
 
     // ========================================
@@ -151,6 +204,7 @@
             btn.addEventListener('click', function () {
                 const theme = btn.getAttribute('data-theme');
                 setTheme(theme);
+                triggerPressed(btn, 140);
             });
         });
     }
@@ -159,8 +213,15 @@
     // Copy
     // ========================================
     function copyPoem() {
-        const poem = poems[currentIndex];
+        const list = getPoems();
+        const poem = list[currentIndex];
+        if (!poem) {
+            showToast('数据加载中，请稍后再试');
+            return;
+        }
         const text = poem.text + '\n—— ' + poem.source;
+
+        triggerPressed(copyBtn, 140);
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(function () {
@@ -194,10 +255,6 @@
     // ========================================
     // Canvas 图片生成
     // ========================================
-
-    /**
-     * 按宽度逐字换行，支持中英文混排
-     */
     function wrapText(ctx, text, maxWidth) {
         const lines = [];
         let current = '';
@@ -230,35 +287,32 @@
         const maxTextWidth = CANVAS_W - PADDING * 2;
         const centerX = CANVAS_W / 2;
 
-        // 2. 诗句：先设置字体，测量并换行
-        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + POEM_FONT_FAMILY;
+        // 2. 诗句（使用系统宋体优先的 CANVAS_SERIF_FAMILY 兜底）
+        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + CANVAS_SERIF_FAMILY;
         ctx.fillStyle = colors.text;
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'center';
 
         const poemLines = wrapText(ctx, poem.text, maxTextWidth);
 
-        // 3. 出处：同样先设置字体
+        // 3. 出处
         const sourceText = '—— ' + poem.source;
         ctx.font = '300 ' + SOURCE_FONT_SIZE + 'px ' + SOURCE_FONT_FAMILY;
         ctx.fillStyle = colors.secondary;
         ctx.textAlign = 'center';
 
-        // 4. 计算整体内容尺寸，用于绝对垂直居中
+        // 4. 计算整体内容高度，垂直居中
         const poemBlockHeight = poemLines.length * POEM_FONT_SIZE * POEM_LINE_HEIGHT;
         const sourceBlockHeight = SOURCE_FONT_SIZE * 1.4;
         const totalContentHeight = poemBlockHeight + GAP_BETWEEN + sourceBlockHeight;
-
-        // contentTop 为内容区顶部位置
         const contentTop = (CANVAS_H - totalContentHeight) / 2;
         let currentY;
 
-        // 5. 绘制诗句：使用 alphabetic baseline，第一行从行高顶部加上 (font-size * 0.8) 开始
-        //    这样保证文字在垂直方向上分布均衡
-        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + POEM_FONT_FAMILY;
+        // 5. 绘制诗句
+        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + CANVAS_SERIF_FAMILY;
         ctx.fillStyle = colors.text;
         const lineStep = POEM_FONT_SIZE * POEM_LINE_HEIGHT;
-        currentY = contentTop + POEM_FONT_SIZE * 0.88; // 近似 alphabetic 基线偏移
+        currentY = contentTop + POEM_FONT_SIZE * 0.88;
         for (let i = 0; i < poemLines.length; i++) {
             ctx.fillText(poemLines[i], centerX, currentY);
             currentY += lineStep;
@@ -274,7 +328,8 @@
     }
 
     function downloadImage() {
-        const poem = poems[currentIndex];
+        const list = getPoems();
+        const poem = list[currentIndex];
         if (!poem) {
             showToast('数据加载中，请稍后再试');
             return;
@@ -282,9 +337,9 @@
         const theme = body.getAttribute('data-theme') || 'white';
         const colors = themeConfig[theme];
 
+        triggerPressed(downloadBtn, 180);
         downloadBtn.setAttribute('disabled', 'true');
 
-        // 关键：先等思源宋体加载完成，避免 Canvas 用降级字体渲染
         waitForFonts().then(function () {
             const canvas = renderPoemToCanvas(poem, colors);
             return new Promise(function (resolve, reject) {
@@ -321,16 +376,37 @@
     }
 
     // ========================================
-    // Keyboard Shortcut
+    // Keyboard Shortcut — 空格键切换 + 按钮按压视觉
     // ========================================
     function initKeyboard() {
+        // keydown：按下瞬间加 pressed 类 + 触发生成
         document.addEventListener('keydown', function (e) {
-            if (e.code === 'Space' && !e.repeat) {
+            if (e.code === 'Space') {
                 const tag = (e.target.tagName || '').toLowerCase();
                 if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
                 e.preventDefault();
-                generatePoem();
+
+                // 只在首次按下触发（不重复），避免 hold 时狂刷
+                if (!e.repeat) {
+                    triggerPressed(generateBtn, 180);
+                    generatePoem();
+                } else {
+                    // 长按时也保持 pressed 的视觉
+                    generateBtn.classList.add('pressed');
+                }
             }
+        });
+
+        // keyup / 失焦：确保移除 pressed 状态
+        document.addEventListener('keyup', function (e) {
+            if (e.code === 'Space') {
+                generateBtn.classList.remove('pressed');
+            }
+        });
+        window.addEventListener('blur', function () {
+            generateBtn.classList.remove('pressed');
+            copyBtn.classList.remove('pressed');
+            downloadBtn.classList.remove('pressed');
         });
     }
 
@@ -341,13 +417,29 @@
         generateBtn.addEventListener('click', generatePoem);
         copyBtn.addEventListener('click', copyPoem);
         downloadBtn.addEventListener('click', downloadImage);
+
+        // 触屏 / 鼠标按下时也加 pressed，与空格键的反馈保持一致
+        const pressables = [generateBtn, copyBtn, downloadBtn];
+        pressables.forEach(function (btn) {
+            if (!btn) return;
+            const add = function () { btn.classList.add('pressed'); };
+            const remove = function () { btn.classList.remove('pressed'); };
+            btn.addEventListener('mousedown', add);
+            btn.addEventListener('touchstart', add, { passive: true });
+            btn.addEventListener('mouseup', remove);
+            btn.addEventListener('mouseleave', remove);
+            btn.addEventListener('touchend', remove);
+            btn.addEventListener('touchcancel', remove);
+            btn.addEventListener('blur', remove);
+        });
     }
 
     // ========================================
     // Initialize
     // ========================================
     function init() {
-        if (typeof poems === 'undefined' || !poems.length) {
+        const list = getPoems();
+        if (!list.length) {
             poemText.textContent = '数据加载失败';
             poemSource.textContent = '';
             return;
