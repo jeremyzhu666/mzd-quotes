@@ -94,8 +94,8 @@
     const PADDING = 162;
     const POEM_FONT_SIZE = 88;
     const SOURCE_FONT_SIZE = 32;
-    const POEM_LINE_HEIGHT = 1.7;
-    const GAP_BETWEEN = 64;
+    const POEM_LINE_HEIGHT = 1.19;
+    const GAP_BETWEEN = 44;   // 原 64，行距 -30% 同步收缩（64 × 0.7 ≈ 45，取 44）
 
     // ========================================
     // Utilities
