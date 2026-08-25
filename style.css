@@ -243,7 +243,7 @@ main { display: block; }
 /* 【关键修复】移除 :active 伪类依赖 — iOS Safari 经典 bug：
  * touch 结束后 :active 可能卡住不释放（尤其是轻微滚动/手势中断后），
  * 导致视觉上"反色回不去"。
- * 所有按压视觉统一由 JS 控制的 .pressed 类负责（桌面 mouse*/移动端 touch*），
+ * 所有按压视觉统一由 JS 控制的 .pressed 类负责（桌面 mouse·/移动端 touch·），
  * :focus-visible 保留无障碍键盘聚焦。 */
 .theme-btn.pressed,
 .theme-btn:focus-visible {
@@ -333,7 +333,7 @@ main { display: block; }
 /* 【关键修复】移除 :active 伪类依赖 — iOS Safari 经典 bug：
  * touch 结束后 :active 可能卡住不释放（尤其是轻微滚动/手势中断后），
  * 导致视觉上"反色回不去"。
- * 所有按压视觉统一由 JS 控制的 .pressed 类负责（桌面 mouse*/移动端 touch*），
+ * 所有按压视觉统一由 JS 控制的 .pressed 类负责（桌面 mouse·/移动端 touch·），
  * :focus-visible 保留无障碍键盘聚焦。
  * 用 !important 防止 hover 背景等其他选择器优先级竞争，
  * 移动端 tap 极快时也确保颜色一定可见。 */

@@ -680,11 +680,15 @@
     }
 
     function initKeyboard() {
-        // 三重保障修复"空格需要选中按钮才生效"：
-        //   1) body tabindex="-1" 让 body 成为合法焦点接收者（HTML 端已加）
-        //   2) document + window 双通道 capture 阶段绑定，不漏事件
-        //   3) e.code / e.key / e.keyCode 三条件命中（兼容老浏览器/iPad 外接键盘）
-        //   4) init 末尾 document.body.focus({ preventScroll: true }) 拉回焦点
+        // 键盘事件绑定说明（版本迭代后的修正）：
+        //   · 仅在 document capture 阶段绑定一次就足够覆盖所有正常场景；之前的 document+window
+        //     双绑定反而导致**同一个事件被处理两次**—— keydown/onPress 连续执行两遍 setPressedOn，
+        //     事件层状态机打架，肉眼看上去像"反色动画一闪就没"。
+        //   · 去重保护（lastHandledStamp）：即便将来再出现"多通道重复触发"的写法或浏览器 bug，
+        //     也能通过 timestamp+type 保证每一次物理按键动作最多只处理一次，作为防线。
+        //   · 其他保障照旧：body tabindex="-1" 合法焦点、code/key/keyCode 三条件兼容、
+        //     init 末尾主动把焦点拉回 body。
+        var lastHandledStamp = { kd: -1, ku: -1 };
         var isEditableTarget = function (t) {
             if (!t) return false;
             try {
@@ -697,7 +701,6 @@
         var isSpaceEvent = function (e) {
             if (e.code === 'Space') return true;
             if (e.key === ' ') return true;
-            // 老 Safari / IE 兼容
             var kc = (typeof e.keyCode === 'number') ? e.keyCode : (typeof e.which === 'number' ? e.which : -1);
             if (kc === 32) return true;
             return false;
@@ -705,24 +708,30 @@
         var onPress = function (e) {
             if (!isSpaceEvent(e)) return;
             if (isEditableTarget(e.target)) return;
+            // 事件级去重：同一 keydown 的时间戳完全相同，只处理一次
+            var ts = (typeof e.timeStamp === 'number') ? e.timeStamp : Date.now();
+            if (ts === lastHandledStamp.kd) return;
+            lastHandledStamp.kd = ts;
             try { e.preventDefault && e.preventDefault(); } catch (_) {}
             try { e.stopPropagation && e.stopPropagation(); } catch (_) {}
             // 空格键独立按压路径：与按钮 click/mouse/touch 完全解耦
-            //   keydown   → setPressedOn（保持 pressed 直到 keyup 后拖尾释放）+ 调 generatePoem（内部节流锁 180ms 防重）
-            //   keyup     → 直接挂 120ms 拖尾 setPressedOff（不再用 triggerPressed 重复 setPressedOn，
-            //               避免与 blur→setPressedOff / maxHoldTimers / mouse 路径等多分支状态机叠加冲突。
-            //               快速 tap 空格时（keydown→keyup 只有 30ms），120ms 拖尾保证肉眼仍能看到反色）
+            //   keydown   → setPressedOn（保持 pressed 直到 keyup 后拖尾释放）
+            //             + 调 generatePoem（内部节流锁 180ms 防重）
+            //   keyup     → 直接挂 120ms 拖尾 setPressedOff，不再用 triggerPressed 重复 setPressedOn
+            //               快速 tap 空格时（keydown→keyup 只有 30ms），120ms 拖尾保证肉眼仍能看到反色
             setPressedOn(generateBtn);
             if (!e.repeat) generatePoem();
         };
         var onRelease = function (e) {
             if (!isSpaceEvent(e)) return;
             if (isEditableTarget(e.target)) return;
+            var ts = (typeof e.timeStamp === 'number') ? e.timeStamp : Date.now();
+            if (ts === lastHandledStamp.ku) return;
+            lastHandledStamp.ku = ts;
             try { e.preventDefault && e.preventDefault(); } catch (_) {}
             try { e.stopPropagation && e.stopPropagation(); } catch (_) {}
             if (!generateBtn) return;
-            // 简化：不再用 triggerPressed（会再次 setPressedOn 一次，多余且易冲突），
-            // 而是直接挂短拖尾后 setPressedOff。keydown 时已经 setPressedOn，
+            // 直接挂短拖尾后 setPressedOff。keydown 时已经 setPressedOn，
             // pressed 类一直保留，直到拖尾到期释放，与桌面鼠标体验一致。
             const existingTrail = pressedTimers.get(generateBtn);
             if (existingTrail) { clearTimeout(existingTrail); pressedTimers.delete(generateBtn); }
@@ -732,11 +741,9 @@
             }, HOLD_MS);
             pressedTimers.set(generateBtn, trailId);
         };
-        // capture=true：事件在捕获阶段就拦截，防止焦点元素吞事件
+        // 仅 document capture 绑定一次，避免双通道重复触发状态机打架
         document.addEventListener('keydown', onPress, true);
-        window.addEventListener('keydown', onPress, true);
         document.addEventListener('keyup', onRelease, true);
-        window.addEventListener('keyup', onRelease, true);
 
         // 失焦立即释放所有 pressed 状态
         window.addEventListener('blur', function () {
