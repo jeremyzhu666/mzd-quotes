@@ -362,10 +362,8 @@
     // ========================================
 
     function buildShareUrl() {
-        // 随机工具：不附带 ?p= 参数，对方打开时自行随机
-        // 部署时输出：https://jeremyzhu666.github.io/mzd-quotes/
-        // 本地调试时输出：http://localhost:xxxx/（随环境动态，不写死字符串）
-        return (location.origin || '') + (location.pathname || '/');
+        // 写死固定：部署地址。复制出去的链接永远指向线上正式页。
+        return 'https://jeremyzhu666.github.io/mzd-quotes/';
     }
 
     function copyShareLink() {
