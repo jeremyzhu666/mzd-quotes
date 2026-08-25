@@ -60,6 +60,28 @@ html, body {
 }
 html { overflow: hidden; }
 body { overflow: hidden; }
+
+/* ===== Font loading gate: eliminate FOUT / FOIT visual jump =====
+ * body is transparent by default until html.fonts-loaded is set
+ * (document.fonts.ready OR 3s JS fallback); CSS-level animation at
+ * 3.2s is the final safety net so page NEVER stays white forever,
+ * even when JS is disabled or throws.
+ * ================================================================ */
+html body {
+    opacity: 0;
+    transition: opacity 260ms ease;
+    will-change: opacity;
+}
+html.fonts-loaded body {
+    opacity: 1;
+}
+html body {
+    animation: fonts-fallback-visible 3200ms steps(1, end) forwards;
+}
+@keyframes fonts-fallback-visible {
+    to { opacity: 1; }
+}
+
 button, a, [role="button"], input, textarea, select {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;

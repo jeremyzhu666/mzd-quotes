@@ -29,6 +29,40 @@
         gray:  { bg: '#F2F2F2', text: '#333333', secondary: '#888888' }
     };
 
+    /* ==============================================================
+     * Font loading gate (eliminate FOUT / visible glyph jump)
+     * Release conditions — winner takes first:
+     *   1. document.fonts.ready resolves — fonts all available
+     *   2. setTimeout 3000 ms — network / blocked CDN fallback
+     *   3. CSS @keyframes 3200 ms — JS disabled / throws safety net
+     * ============================================================== */
+    (function unlockWhenFontsReady() {
+        var MAX_WAIT_MS = 3000;
+        var html = document.documentElement;
+        if (!html) return;
+
+        function unlock() {
+            if (html.classList && !html.classList.contains('fonts-loaded')) {
+                html.classList.add('fonts-loaded');
+            }
+        }
+
+        var fallbackTimer = setTimeout(unlock, MAX_WAIT_MS);
+
+        try {
+            if (document.fonts &&
+                typeof document.fonts.ready !== 'undefined' &&
+                document.fonts.ready &&
+                typeof document.fonts.ready.then === 'function') {
+                document.fonts.ready.then(function () {
+                    clearTimeout(fallbackTimer);
+                    unlock();
+                }).catch(function () { unlock(); });
+            }
+            // else: keep fallback timer running; CSS animation at 3.2s also backs up
+        } catch (e) { unlock(); }
+    })();
+
     // ========================================
     // Fonts
     // ========================================
