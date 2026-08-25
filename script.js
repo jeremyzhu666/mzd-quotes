@@ -306,12 +306,12 @@
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(url).then(function () {
-                showToast('链接已复制');
+                showToast('网址已复制');
             }).catch(function () {
-                fallbackCopyText(url, '链接已复制');
+                fallbackCopyText(url, '网址已复制');
             });
         } else {
-            fallbackCopyText(url, '链接已复制');
+            fallbackCopyText(url, '网址已复制');
         }
     }
 
@@ -484,7 +484,13 @@
     }
 
     function initKeyboard() {
-        if (!isFinePointerWithKeyboard()) return; // 移动端 / 触屏：不绑定空格键
+        // 全局绑定 document keydown/keyup —— 不做 isFinePointerWithKeyboard 拦截。
+        // 原因：
+        //   1) 旧逻辑 hasTouch 会误伤带触屏的笔记本 / iPadOS 桌面模式 + 外接键盘
+        //      → 导致整段 document listener 根本没注册，"只有按钮 focus 时 Space 才生效"
+        //   2) 移动端（纯触屏）在没有输入框 focus 时，软键盘根本不会弹出来，
+        //      用户根本没有办法按到全局的 Space，不会误触。
+        //   3) 唯一能触发全局 Space 的就是"有物理键盘"的场景，正是目标用户。
 
         // keydown：按下瞬间持续保持 pressed（setPressedOn 会清旧调度）
         document.addEventListener('keydown', function (e) {
