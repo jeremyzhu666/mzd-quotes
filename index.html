@@ -10,7 +10,8 @@
     <meta property="og:type" content="website">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Noto Serif SC（思源宋体 Google 版）覆盖简体中文全量常用字符；Inter 用于英文与辅助信息 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Serif+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="white">
@@ -28,9 +29,13 @@
             </div>
 
             <div class="actions">
-                <button class="action-btn" id="generateBtn">生 成</button>
-                <button class="action-btn" id="downloadBtn">下 载</button>
-                <button class="action-btn" id="copyBtn">复 制</button>
+                <div class="action-row action-row-primary">
+                    <button class="action-btn" id="generateBtn">随机生成</button>
+                </div>
+                <div class="action-row action-row-secondary">
+                    <button class="action-btn" id="downloadBtn">图片分享</button>
+                    <button class="action-btn" id="copyBtn">复制</button>
+                </div>
             </div>
         </section>
     </main>

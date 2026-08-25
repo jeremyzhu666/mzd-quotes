@@ -20,13 +20,54 @@
     const toast = document.getElementById('toast');
 
     // ========================================
-    // Theme Config — 页面展示与图片生成共用
+    // Theme Config
     // ========================================
     const themeConfig = {
         white: { bg: '#FFFFFF', text: '#1A1A1A', secondary: '#888888' },
         black: { bg: '#0A0A0A', text: '#F0F0F0', secondary: '#888888' },
         gray:  { bg: '#F2F2F2', text: '#333333', secondary: '#888888' }
     };
+
+    // ========================================
+    // Fonts — 覆盖尽量全的系统宋体系列，Noto Serif SC (思源宋体) 优先
+    // ========================================
+    const POEM_FONT_FAMILY = [
+        '"Noto Serif SC"',          // Google Fonts：思源宋体（在线，覆盖最全简体中文）
+        '"Source Han Serif SC"',    // Adobe：思源宋体
+        '"Source Han Serif CN"',    // Adobe：思源宋体 CN 子集
+        '"Songti SC"',              // macOS 自带：宋体-简
+        '"STSong"',                 // macOS 旧版：华文宋体
+        '"SimSun"',                 // Windows：宋体
+        '"WenQuanYi Bitmap Song"',  // Linux：文泉驿点阵宋体
+        '"AR PL UMing CN"',         // Linux：AR PL 大宋体
+        '"AR PL SungtiL GB"',       // Linux：AR PL 宋体 GB
+        '"PingFang SC"',            // macOS/iOS：苹方（无衬线，作为最后兜底以确保字符存在）
+        'serif'                     // 最终通用 serif
+    ].join(', ');
+
+    const SOURCE_FONT_FAMILY = [
+        '"Inter"',
+        '-apple-system',
+        'BlinkMacSystemFont',
+        '"PingFang SC"',
+        '"Hiragino Sans GB"',       // macOS：冬青黑体
+        '"Microsoft YaHei"',        // Windows：微软雅黑
+        '"WenQuanYi Micro Hei"',    // Linux：文泉驿微米黑
+        '"Heiti SC"',               // macOS：黑体-简
+        '"SimHei"',                 // Windows：黑体
+        'sans-serif'
+    ].join(', ');
+
+    // ========================================
+    // Canvas 图片规格
+    // ========================================
+    const CANVAS_W = 1080;
+    const CANVAS_H = 1350;
+    const PADDING = 162;              // 左右各 15% 边距
+    const POEM_FONT_SIZE = 88;
+    const SOURCE_FONT_SIZE = 32;
+    const POEM_LINE_HEIGHT = 1.7;
+    const GAP_BETWEEN = 64;
 
     // ========================================
     // Utilities
@@ -58,6 +99,20 @@
             + pad(d.getHours())
             + pad(d.getMinutes())
             + pad(d.getSeconds());
+    }
+
+    /**
+     * 等待字体加载完成（最多 5 秒超时），确保 Canvas 使用正确字体渲染。
+     */
+    function waitForFonts() {
+        if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+            // ready 返回的 Promise 会在所有字体加载完成后 resolve
+            const timeout = new Promise(function (resolve) {
+                setTimeout(resolve, 5000);
+            });
+            return Promise.race([document.fonts.ready, timeout]);
+        }
+        return Promise.resolve();
     }
 
     // ========================================
@@ -137,22 +192,11 @@
     }
 
     // ========================================
-    // Canvas 图片生成（替代 dom-to-image，彻底解决跨域问题）
+    // Canvas 图片生成
     // ========================================
-    const CANVAS_W = 1080;
-    const CANVAS_H = 1350;
-    const PADDING = 162; // 15% of 1080，四周边距
-    const POEM_FONT_SIZE = 88;
-    const SOURCE_FONT_SIZE = 32;
-    const POEM_LINE_HEIGHT = 1.7;
-    const GAP_BETWEEN = 64; // 诗句与出处间距
-
-    // 诗句字体族：优先使用思源宋体，降级到系统宋体
-    const POEM_FONT_FAMILY = '"Noto Serif SC", "Source Han Serif SC", "PingFang SC", "SimSun", "Songti SC", serif';
-    const SOURCE_FONT_FAMILY = '"Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
 
     /**
-     * 按宽度将文本切分成多行（支持中英文混合）
+     * 按宽度逐字换行，支持中英文混排
      */
     function wrapText(ctx, text, maxWidth) {
         const lines = [];
@@ -172,59 +216,56 @@
         return lines;
     }
 
-    /**
-     * 使用原生 Canvas 绘制诗句图片
-     */
     function renderPoemToCanvas(poem, colors) {
         const canvas = document.createElement('canvas');
-        const dpr = window.devicePixelRatio || 1;
-        // 内部使用更高分辨率绘制，再缩放到目标尺寸，保证清晰
         canvas.width = CANVAS_W;
         canvas.height = CANVAS_H;
         const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('当前浏览器不支持 Canvas 2D');
 
-        // 1. 填充背景
+        // 1. 背景
         ctx.fillStyle = colors.bg;
         ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
         const maxTextWidth = CANVAS_W - PADDING * 2;
+        const centerX = CANVAS_W / 2;
 
-        // 2. 准备诗句样式并计算换行
+        // 2. 诗句：先设置字体，测量并换行
         ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + POEM_FONT_FAMILY;
         ctx.fillStyle = colors.text;
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'center';
-        ctx.letterSpacing = '0.05em';
 
         const poemLines = wrapText(ctx, poem.text, maxTextWidth);
 
-        // 3. 准备出处样式
+        // 3. 出处：同样先设置字体
         const sourceText = '—— ' + poem.source;
         ctx.font = '300 ' + SOURCE_FONT_SIZE + 'px ' + SOURCE_FONT_FAMILY;
         ctx.fillStyle = colors.secondary;
         ctx.textAlign = 'center';
 
-        // 4. 计算整体内容高度，用于垂直居中
+        // 4. 计算整体内容尺寸，用于绝对垂直居中
         const poemBlockHeight = poemLines.length * POEM_FONT_SIZE * POEM_LINE_HEIGHT;
         const sourceBlockHeight = SOURCE_FONT_SIZE * 1.4;
         const totalContentHeight = poemBlockHeight + GAP_BETWEEN + sourceBlockHeight;
 
-        let currentY = (CANVAS_H - totalContentHeight) / 2;
-        const centerX = CANVAS_W / 2;
+        // contentTop 为内容区顶部位置
+        const contentTop = (CANVAS_H - totalContentHeight) / 2;
+        let currentY;
 
-        // 5. 绘制诗句
+        // 5. 绘制诗句：使用 alphabetic baseline，第一行从行高顶部加上 (font-size * 0.8) 开始
+        //    这样保证文字在垂直方向上分布均衡
         ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + POEM_FONT_FAMILY;
         ctx.fillStyle = colors.text;
         const lineStep = POEM_FONT_SIZE * POEM_LINE_HEIGHT;
-        // 从第一行的中线位置开始绘制
-        currentY += POEM_FONT_SIZE * POEM_LINE_HEIGHT / 2;
+        currentY = contentTop + POEM_FONT_SIZE * 0.88; // 近似 alphabetic 基线偏移
         for (let i = 0; i < poemLines.length; i++) {
             ctx.fillText(poemLines[i], centerX, currentY);
             currentY += lineStep;
         }
 
         // 6. 绘制出处
-        currentY += GAP_BETWEEN - lineStep / 2 + SOURCE_FONT_SIZE * 1.4 / 2;
+        currentY = contentTop + poemBlockHeight + GAP_BETWEEN + SOURCE_FONT_SIZE * 0.85;
         ctx.font = '300 ' + SOURCE_FONT_SIZE + 'px ' + SOURCE_FONT_FAMILY;
         ctx.fillStyle = colors.secondary;
         ctx.fillText(sourceText, centerX, currentY);
@@ -243,36 +284,40 @@
 
         downloadBtn.setAttribute('disabled', 'true');
 
-        try {
+        // 关键：先等思源宋体加载完成，避免 Canvas 用降级字体渲染
+        waitForFonts().then(function () {
             const canvas = renderPoemToCanvas(poem, colors);
-            canvas.toBlob(function (blob) {
+            return new Promise(function (resolve, reject) {
                 try {
-                    if (!blob) {
-                        throw new Error('Canvas 导出失败');
-                    }
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.download = 'verses-' + formatDate() + '.png';
-                    link.href = url;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setTimeout(function () {
-                        URL.revokeObjectURL(url);
-                    }, 1000);
-                    showToast('已下载');
-                } catch (err) {
-                    console.error(err);
-                    showToast('下载失败，请重试');
-                } finally {
-                    downloadBtn.removeAttribute('disabled');
+                    canvas.toBlob(function (blob) {
+                        if (!blob) {
+                            reject(new Error('Canvas 导出为空'));
+                            return;
+                        }
+                        resolve(blob);
+                    }, 'image/png');
+                } catch (e) {
+                    reject(e);
                 }
-            }, 'image/png');
-        } catch (err) {
-            console.error(err);
-            showToast('下载失败，请重试');
+            });
+        }).then(function (blob) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = 'verses-' + formatDate() + '.png';
+            link.href = url;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(function () {
+                URL.revokeObjectURL(url);
+            }, 1500);
+            showToast('已下载');
+        }).catch(function (err) {
+            console.error('downloadImage failed:', err);
+            showToast('图片生成失败，请重试');
+        }).finally(function () {
             downloadBtn.removeAttribute('disabled');
-        }
+        });
     }
 
     // ========================================
@@ -280,7 +325,6 @@
     // ========================================
     function initKeyboard() {
         document.addEventListener('keydown', function (e) {
-            // 空格键触发生成（排除输入框等场景）
             if (e.code === 'Space' && !e.repeat) {
                 const tag = (e.target.tagName || '').toLowerCase();
                 if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
@@ -308,6 +352,9 @@
             poemSource.textContent = '';
             return;
         }
+
+        // 提前触发字体加载 Promise，后续下载时大概率已就绪
+        waitForFonts();
 
         currentIndex = getRandomIndex();
         displayPoem(currentIndex);
