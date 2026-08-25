@@ -645,8 +645,10 @@
         downloadBtn.addEventListener('click', downloadImage);
 
         // 触屏 / 鼠标按压态：统一走 setPressedOn / triggerPressed 状态机
-        //  关键：鼠标抬起 / 触屏抬起后，再"多显示 120ms 反色"才消失，
-        //        避免移动端极快 tap（20-30ms）时颜色一闪而过，肉眼看不到。
+        //  — 桌面端：mousedown → setPressedOn；mouseup → triggerPressed(100ms) 拖尾；mouseleave → setPressedOff
+        //  — 移动端：touchstart → setPressedOn；touchend → triggerPressed(100ms) 拖尾；touchcancel → setPressedOff
+        //  两端动画完全等价：按下立即变色，抬起后"多显示 100ms 反色"才消失，
+        //  避免移动端极快 tap（20-30ms）时颜色一闪而过，肉眼看不到。
         const pressables = [generateBtn, copyBtn, downloadBtn];
         pressables.forEach(function (btn) {
             if (!btn) return;
@@ -655,17 +657,17 @@
                 setPressedOn(btn);                // 按下：立即 pressed（变色反馈）
             }, { passive: true });
             btn.addEventListener('touchend', function () {
-                setPressedOff(btn);               // 手指一离开：立即回到原色，无拖尾
+                triggerPressed(btn, 100);         // 抬起：多显示 100ms 反色，与桌面端 mouseup 完全一致
             }, { passive: true });
             btn.addEventListener('touchcancel', function () {
-                setPressedOff(btn);               // 取消：立即还原
+                setPressedOff(btn);               // 取消：立即还原（对应桌面端 mouseleave）
             }, { passive: true });
 
             btn.addEventListener('mousedown', function () {
                 setPressedOn(btn);
             });
             btn.addEventListener('mouseup', function () {
-                triggerPressed(btn, 100);         // 桌面鼠标抬起后稍短一些
+                triggerPressed(btn, 100);         // 桌面鼠标抬起后 100ms 拖尾
             });
             btn.addEventListener('mouseleave', function () {
                 setPressedOff(btn);               // 鼠标滑出：立刻释放（符合桌面习惯）
@@ -679,7 +681,7 @@
         themeBtns.forEach(function (btn) {
             if (!btn) return;
             btn.addEventListener('touchstart', function () { setPressedOn(btn); }, { passive: true });
-            btn.addEventListener('touchend',   function () { setPressedOff(btn); }, { passive: true });
+            btn.addEventListener('touchend',   function () { triggerPressed(btn, 80); }, { passive: true }); // 与桌面主题按钮 mouseup 拖尾 80ms 一致
             btn.addEventListener('touchcancel',function () { setPressedOff(btn); }, { passive: true });
             btn.addEventListener('mousedown',  function () { setPressedOn(btn); });
             btn.addEventListener('mouseup',    function () { triggerPressed(btn, 80); });

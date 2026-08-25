@@ -461,8 +461,10 @@ main { display: block; }
         -webkit-font-smoothing: subpixel-antialiased;
         -moz-osx-font-smoothing: auto;
         text-rendering: optimizeLegibility;
-        /* 移动端兼容性一般且我们已有强制分行逻辑，去掉 balance */
-        text-wrap: wrap;
+        /* 与桌面端统一：自动换行走 balance 平衡分行策略，
+         * 保证两端对非 7+7 长句的分行规则一致。
+         * 7+7 句式的强制换行由 JS 插入真实 <br> 决定，不受 text-wrap 影响。 */
+        text-wrap: balance;
         /* 双保险：显式与桌面端对齐。虽然 DOM 已改为真实 <br> 不依赖 white-space，
          * 但避免 text-wrap longhand 让 shorthand white-space: pre-wrap 语义失效。 */
         white-space: pre-wrap;
