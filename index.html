@@ -33,15 +33,14 @@
 
             <div class="actions">
                 <div class="action-row action-row-primary">
-                    <button class="action-btn" id="generateBtn">随机生成</button>
+                    <button class="action-btn" id="generateBtn" type="button">
+                        <span class="btn-label">随机生成</span>
+                        <span class="btn-hint" aria-hidden="true">按空格键切换</span>
+                    </button>
                 </div>
-                <!-- 独立空格提示：功能与按钮拆开，按钮只承载「随机生成」语义，
-                     空格切换提示作为独立小字，不参与按钮的交互/焦点/点击事件。
-                     移动端 / 触屏 @media 内隐藏。 -->
-                <p class="space-hint" aria-hidden="true">按空格键切换</p>
                 <div class="action-row action-row-secondary">
-                    <button class="action-btn" id="downloadBtn">图片分享</button>
-                    <button class="action-btn" id="copyBtn">网址复制</button>
+                    <button class="action-btn" id="downloadBtn" type="button">图片分享</button>
+                    <button class="action-btn" id="copyBtn" type="button">网址复制</button>
                 </div>
             </div>
         </section>

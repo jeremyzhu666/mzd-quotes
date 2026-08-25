@@ -6,7 +6,8 @@
     // ========================================
     let currentIndex = -1;
     let toastTimer = null;
-    let pressedTimers = Object.create(null); // btn id -> timeout id
+    let pressedTimers = new WeakMap();       // btn element -> timeout id
+    let generateThrottleTimer = null;        // generatePoem 节流锁，防止空格+click 双重触发
 
     // ========================================
     // DOM Elements
@@ -253,10 +254,31 @@
     }
 
     /**
-     * 给按钮一个"被按下去"的视觉反馈（空格键模拟点击时使用）
-     * @param {HTMLElement} btn
-     * @param {number} [duration=140]
+     * 按钮按压态底层开关
+     *   setPressedOn  —— 立即进入 pressed 反色态（如果有 pending 释放定时器，先清掉）
+     *   setPressedOff —— 立即退出 pressed 态，同时清理 pending 的释放定时器
+     * 统一入口：所有 mouse/touch/keyboard/click 的按压视觉都走这两个函数，
+     * 避免各自加 class / 清 class 导致状态错乱。
      */
+    function setPressedOn(btn) {
+        if (!btn) return;
+        const existing = pressedTimers.get(btn);
+        if (existing) {
+            clearTimeout(existing);
+            pressedTimers.delete(btn);
+        }
+        btn.classList.add('pressed');
+    }
+    function setPressedOff(btn) {
+        if (!btn) return;
+        const existing = pressedTimers.get(btn);
+        if (existing) {
+            clearTimeout(existing);
+            pressedTimers.delete(btn);
+        }
+        btn.classList.remove('pressed');
+    }
+
     /**
      * 触发一次"带最小持续时长"的按压反馈：
      *   1. 立刻置为按压态
@@ -298,11 +320,23 @@
     }
 
     function generatePoem() {
+        // 180ms 节流锁：空格/按钮 click 两条路径共用同一个入口，无论连按空格、
+        // 快速连点按钮、还是"按钮 focus 时按空格被浏览器同时当 click 触发"，
+        // 加锁后都只会真正执行一次，杜绝重复生成。
+        if (generateThrottleTimer) return;
+        generateThrottleTimer = setTimeout(function () {
+            generateThrottleTimer = null;
+        }, 180);
+
         const list = getPoems();
         if (!list.length) return;
         currentIndex = getRandomIndex();
         displayPoem(currentIndex);
-        triggerPressed(generateBtn, 160);
+        /* 注意：按压态反馈不再在这里统一触发。
+         *   - 按钮 click：由 mouse/touch 事件的独立绑定负责按压视觉（见 initEvents）
+         *   - 空格键：由 keydown/keyup 的独立逻辑负责按压视觉（见 initKeyboard）
+         * 功能解耦，避免两条路径叠加导致状态冲突或拖尾时长错乱。
+         */
     }
 
     // ========================================
@@ -566,6 +600,9 @@
             if (isEditableTarget(e.target)) return;
             try { e.preventDefault && e.preventDefault(); } catch (_) {}
             try { e.stopPropagation && e.stopPropagation(); } catch (_) {}
+            // 空格键独立按压路径：与按钮 click/mouse/touch 完全解耦
+            //   keydown   → setPressedOn（保持 pressed 直到 keyup）+ 调 generatePoem（内部节流锁 180ms 防重）
+            //   keyup     → triggerPressed(120ms 拖尾)，与桌面鼠标抬起体验一致
             setPressedOn(generateBtn);
             if (!e.repeat) generatePoem();
         };
@@ -573,7 +610,7 @@
             if (!isSpaceEvent(e)) return;
             if (isEditableTarget(e.target)) return;
             try { e.preventDefault && e.preventDefault(); } catch (_) {}
-            triggerPressed(generateBtn, 80);
+            triggerPressed(generateBtn, 120);
         };
         // capture=true：事件在捕获阶段就拦截，防止焦点元素吞事件
         document.addEventListener('keydown', onPress, true);
@@ -586,7 +623,7 @@
             setPressedOff(generateBtn);
             setPressedOff(copyBtn);
             setPressedOff(downloadBtn);
-            themeButtons.forEach(function (t) { setPressedOff(t); });
+            themeBtns.forEach(function (t) { setPressedOff(t); });
         });
 
         // 焦点拉回 body（防止首屏第一下 Space 丢失）
@@ -643,7 +680,7 @@
         });
 
         // 三个配色按钮（纸白/墨黑/素灰）也同步同一套按压视觉状态机
-        themeButtons.forEach(function (btn) {
+        themeBtns.forEach(function (btn) {
             if (!btn) return;
             btn.addEventListener('touchstart', function () { setPressedOn(btn); }, { passive: true });
             btn.addEventListener('touchend',   function () { setPressedOff(btn); }, { passive: true });

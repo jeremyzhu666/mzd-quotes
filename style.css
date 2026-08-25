@@ -243,8 +243,7 @@ main { display: block; }
 .theme-btn:active,
 .theme-btn.pressed,
 .theme-btn:focus-visible {
-    outline: 1px solid var(--text);
-    outline-offset: 2px;
+    outline: none;
     transition: none;        /* 聚焦/按压瞬时变色，不要 transition 延迟，移动端避免"来不及看到" */
 }
 [data-theme="white"] .theme-btn[data-theme="white"],
@@ -314,12 +313,13 @@ main { display: block; }
     letter-spacing: 0.04em;
     line-height: 1.2;
     border-radius: var(--radius);
-    transition: background-color var(--transition), color var(--transition), transform 80ms linear;
+    transition: background-color var(--transition), color var(--transition);
     display: inline-flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     text-align: center;
-    gap: 0px; /* 默认 0，桌面有键盘时才放大到 14 */
+    gap: 4px; /* 默认纵向：主文 ↔ 提示文字之间；移动端无 hint 时不影响视觉 */
 }
 .action-btn:hover {
     background-color: var(--text);
@@ -331,45 +331,36 @@ main { display: block; }
     /* 按压态三态并列：
      * :active            → 桌面端鼠标 / 激活 touchstart 后的 iOS 触屏
      * .pressed           → JS 手动类，移动端兜底（必须）
-     * :focus-visible     → 键盘 tab 聚焦态（无障碍）
+     * :focus-visible     → 键盘 tab 聚焦态（无障碍，但无视觉 focus 框）
      * 用 !important 防止 hover 背景等其他选择器优先级竞争，
      * 移动端 tap 极快时也确保颜色一定可见。 */
     background-color: var(--text) !important;
     color: var(--bg) !important;
-    outline: none;
-}
-.action-btn:focus-visible {
-    outline: 1px solid var(--text);
-    outline-offset: 3px;
+    outline: none !important;
 }
 
-/* —— 按钮内提示：主文 + 明确的操作说明 —— */
+/* —— 按钮内提示：主文在上 + 操作说明在下（纵向两行） —— */
 .btn-label {
     display: inline-block;
-    line-height: 1.2;
+    line-height: 1.3;
     font-weight: 400;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
+    color: inherit;
 }
 .btn-hint {
     display: inline-block;
     line-height: 1.2;
-    font-family: "Inter", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    font-size: 13px;
-    line-height: 1.3;
-    font-weight: 400;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
+    font-family: "Inter", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+    font-size: 12px;
     font-weight: 400;
     letter-spacing: 0.04em;
-    opacity: 0.85;
+    opacity: 0.78;
     color: inherit;
     transition: opacity var(--transition);
 }
 .btn-hint::before {
-    content: "·";
-    display: inline-block;
-    margin: 0 6px 0 2px;                    /* -20%：分隔点左边距同步收缩 */
-    opacity: 0.5;
-    font-weight: 400;                       /* 与主文/提示同样 400，不单独加粗 */
+    display: none;
+    content: none;
 }
 .action-btn:hover .btn-hint,
 .action-btn:active .btn-hint,
@@ -381,7 +372,7 @@ main { display: block; }
 /* 桌面端（有物理键盘 + 细指针）才显示按钮内提示并给足间距 */
 @media (pointer: fine) and (min-width: 769px) {
     .action-btn {
-        gap: 11px;                           /* -20%：主文 ↔ 按键提示 之间的水平间距 */
+        gap: 6px;                            /* 纵向两行：主文 ↔ 按键提示 之间的垂直间距 */
     }
 }
 
