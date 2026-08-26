@@ -308,10 +308,6 @@ main { display: block; }
     user-select: none;
     pointer-events: none;
 }
-@media (pointer: fine) and (min-width: 769px) {
-    .space-hint { opacity: 0.85; }
-}
-
 .action-btn {
     flex: 1;
     min-width: 0;
@@ -327,12 +323,11 @@ main { display: block; }
     border-radius: var(--radius);
     transition: background-color var(--transition), color var(--transition);
     display: inline-flex;
-    flex-direction: row;                     /* 横向左右布局：label 左 + hint 右 */
-    flex-wrap: nowrap;                       /* 禁止换行：桌面端一行展示，不因为窄屏自动掉到下一行 */
+    flex-direction: row;
     justify-content: center;
     align-items: center;
     text-align: center;
-    gap: 0;                                  /* 间距由 ::before 分隔符的 margin-left/right 精确控制 */
+    gap: 0;
     /* iOS Safari：按钮级显式清除自带灰色 tap 高亮，
      * 避免系统半透明灰块 + 我们 .pressed 反色叠加视觉残留，
      * 真机上表现为"点完一次反色回不去"。 */
@@ -354,51 +349,6 @@ main { display: block; }
 }
 .action-btn:focus-visible {
     outline: none !important;
-}
-
-/* —— 按钮内提示：主文在上 + 操作说明在下（纵向两行） —— */
-.btn-label {
-    display: inline-block;
-    line-height: 1.3;
-    font-weight: 400;
-    letter-spacing: 0.06em;
-    color: inherit;
-}
-.btn-hint {
-    display: inline-block;
-    line-height: 1.2;
-    font-family: "Inter", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
-    font-size: 12px;
-    font-weight: 400;
-    letter-spacing: 0.04em;
-    opacity: 0.78;
-    color: inherit;
-    transition: opacity var(--transition);
-}
-.btn-hint::before {
-    content: "·";
-    display: inline-block;
-    margin: 0 6px 0 2px;                    /* -20%：分隔点左边距同步收缩 */
-    opacity: 0.5;
-    font-weight: 400;                       /* 与主文/提示同样 400，不单独加粗 */
-}
-/* .pressed 时提示全亮（两端通用）。
- * :hover 提示全亮仅桌面端启用 ——移动端 :hover 粘滞会让提示一直全亮。 */
-.action-btn.pressed .btn-hint {
-    opacity: 1;
-}
-@media (hover: hover) and (pointer: fine) {
-    .action-btn:hover .btn-hint {
-        opacity: 1;
-    }
-}
-
-
-/* 桌面端（有物理键盘 + 细指针）才显示按钮内提示并给足间距 */
-@media (pointer: fine) and (min-width: 769px) {
-    .action-btn {
-        gap: 0;                              /* 横向布局：label · hint 之间的间距由 ::before 分隔符的 margin 精确控制 */
-    }
 }
 
 /* ===== Toast 提示 ===== */
@@ -431,12 +381,9 @@ main { display: block; }
 
 /* ===== 响应式：移动端与窄屏 ===== */
 /* =========================================
- *  移动端 / 触屏设备：
- *  - 隐藏「按空格键切换」提示（手机没键盘，提示无意义）
- *  - 按钮内 gap 收紧，更贴合"仅主文"的视觉尺寸
  *  判定维度：
  *    max-width: 768px → 手机窄屏
- *    pointer: coarse → iPad/触屏设备（即使宽屏也不显示）
+ *    pointer: coarse → iPad/触屏设备（即使宽屏也用触屏逻辑）
  * ========================================= */
 @media (max-width: 768px), (pointer: coarse) {
     :root {
@@ -461,12 +408,6 @@ main { display: block; }
     }
     .action-btn {
         padding: 10px 13px;                 /* -20%：13→10.4≈10，16→12.8≈13 */
-        gap: 0;                             /* 移动端不显示提示时，内部 gap 置 0 更紧凑 */
-    }
-    /* 隐藏空格键提示（触屏/窄屏无物理键盘） */
-    .space-hint,
-    .btn-hint {
-        display: none !important;
     }
 
     /* =============================================================

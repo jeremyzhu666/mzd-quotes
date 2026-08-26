@@ -865,13 +865,6 @@
     // Initialize
     // ========================================
     function init() {
-        // 移动端 / 触屏：DOM 层移除空格提示（独立 .space-hint + 旧 .btn-hint）
-        if (!isFinePointerWithKeyboard()) {
-            document.querySelectorAll('.space-hint, .btn-hint').forEach(function (el) {
-                try { if (el && el.parentNode) el.parentNode.removeChild(el); } catch (_) {}
-            });
-        }
-
         const list = getPoems();
         if (!list.length) {
             poemText.textContent = '数据加载失败';
