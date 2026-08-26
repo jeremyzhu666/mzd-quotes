@@ -377,18 +377,30 @@
         const poem = list[index];
         if (!poem) return;
 
+        // 1. 即时隐藏当前文字（先清 transition，避免上一次的 100ms 残留触发 fade-out 动画）
+        poemText.style.transition = 'none';
+        poemSource.style.transition = 'none';
         poemText.style.opacity = '0';
         poemSource.style.opacity = '0';
 
-        setTimeout(function () {
+        // 2. 等一帧 → 写新文字 → 强制布局 → 再等一帧 → 才淡入
+        //    关键：rAF1 写入内容 + 读 offsetHeight 强制 reflow（新文字进入布局树），
+        //    浏览器在 rAF1 与 rAF2 之间会 commit 一次 paint（新文字已画到屏幕，
+        //    但 opacity=0 不可见）。rAF2 设 opacity=1 触发淡入时，文字已是完整渲染
+        //    状态——移动端不再出现「半渲染文字先闪一下再跳变」，与桌面端观感一致。
+        requestAnimationFrame(function () {
             // 桌面端 + 移动端走同一套独立换行逻辑（真实 <br>，不依赖 white-space）
             renderPoemLinesToElement(poemText, poem.text);
             poemSource.textContent = '—— ' + poem.source;
-            poemText.style.transition = 'opacity 100ms ease';
-            poemSource.style.transition = 'opacity 100ms ease';
-            poemText.style.opacity = '1';
-            poemSource.style.opacity = '1';
-        }, 80);
+            // 强制同步布局，确保新文字已进入布局树（commit opacity=0 + 新内容）
+            void poemText.offsetHeight;
+            requestAnimationFrame(function () {
+                poemText.style.transition = 'opacity 100ms ease';
+                poemSource.style.transition = 'opacity 100ms ease';
+                poemText.style.opacity = '1';
+                poemSource.style.opacity = '1';
+            });
+        });
     }
 
     function generatePoem() {
