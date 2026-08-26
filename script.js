@@ -264,16 +264,20 @@
     // ========================================
     // Utilities
     // ========================================
+    // —— 性能：getPoems 只在第一次做 typeof/Array 判定，之后返回同一引用（不做深拷贝，
+    //    因为项目中从不修改返回数组，所有调用都是只读读条目/长度/索引）——
+    var _cachedPoems = null;
     function getPoems() {
-        // 兼容独立文件 poems.js：优先 window.poems，其次全局 poems
-        const list = (typeof window !== 'undefined' && window.poems) || (typeof poems !== 'undefined' ? poems : null);
-        return Array.isArray(list) ? list : [];
+        if (_cachedPoems !== null) return _cachedPoems;
+        var list = (typeof window !== 'undefined' && window.poems) || (typeof poems !== 'undefined' ? poems : null);
+        _cachedPoems = Array.isArray(list) ? list : [];
+        return _cachedPoems;
     }
 
     function getRandomIndex() {
-        const list = getPoems();
+        var list = getPoems();
         if (list.length <= 1) return 0;
-        let idx;
+        var idx;
         do {
             idx = Math.floor(Math.random() * list.length);
         } while (idx === currentIndex);
@@ -310,36 +314,53 @@
      *   桌面 DOM / 移动端 DOM / Canvas 导出图 三者 100% 一致。
      * ================================================================ */
 
+    // —— 性能：七言正则只构建一次（原每次调用都 new RegExp，开销巨大）
+    //    —— Markers / escape span 也只创建一次
+    var _SEVEN_RE = (function () {
+        var SEVEN = '[^\\s，。！？、,.!?；;：:「」『』\\[\\]()（）《》\\-—·…\\dA-Za-z]{7}';
+        return new RegExp('(?<left>' + SEVEN + ')'
+            + '[,，]'
+            + '(?<right>' + SEVEN + ')'
+            + '[。.](?![，。！？])', 'g');
+    })();
+    var _LB_MARKER = '\u0000LB\u0000';
+    // 拆分结果缓存（同一句诗多次出现无需再正则匹配）
+    var _splitCache = new Map();
+    var _SPLIT_CACHE_MAX = 512;    // 超过上限就清空（内存友好）
+
+    var _escapeSpan = null;
+    function _escapeHtml(s) {
+        // 性能：全局只创建一个 span，避免每次 createElement + GC
+        if (!_escapeSpan) _escapeSpan = document.createElement('span');
+        _escapeSpan.textContent = s;
+        return _escapeSpan.innerHTML;
+    }
+
     // (1) 纯拆分函数：字符串 → { lines: string[], isSevenSeven: boolean }
     //     无 DOM 依赖，可给 DOM 渲染 / Canvas 绘制 / 旧 formatPoemForDisplay 复用
     function splitSevenSevenPoem(text) {
         if (typeof text !== 'string' || !text) {
             return { lines: [], isSevenSeven: false };
         }
-        var SEVEN = '[^\\s，。！？、,.!?；;：:「」『』\[\]()（）《》\-—·…\dA-Za-z]{7}';
-        var pattern = new RegExp(
-            '(?<left>' + SEVEN + ')'
-          + '[,，]'
-          + '(?<right>' + SEVEN + ')'
-          + '[。.](?![，。！？])',
-            'g'
-        );
+        var hit = _splitCache.get(text);
+        if (hit !== undefined) return hit;
         var matched = false;
-        var MARKER = '\u0000LB\u0000';
-        var replaced = text.replace(pattern, function (m, left, right) {
+        var replaced = text.replace(_SEVEN_RE, function (m, left, right) {
             matched = true;
             var lastChar = m.charAt(m.length - 1);
-            return left + MARKER + right + lastChar;
+            return left + _LB_MARKER + right + lastChar;
         });
+        var res;
         if (!matched) {
-            // 非 7+7：保留原文（已有 \n 则尊重，否则一行）
             var arr = text.split(/\r?\n/).filter(function (s) { return s !== ''; });
-            return {
-                lines: (arr.length === 0 ? [text] : arr),
-                isSevenSeven: false
-            };
+            res = { lines: (arr.length === 0 ? [text] : arr), isSevenSeven: false };
+        } else {
+            res = { lines: replaced.split(_LB_MARKER), isSevenSeven: true };
         }
-        return { lines: replaced.split(MARKER), isSevenSeven: true };
+        // 写缓存；超限清空避免无限增长
+        if (_splitCache.size >= _SPLIT_CACHE_MAX) _splitCache.clear();
+        _splitCache.set(text, res);
+        return res;
     }
 
     // (2) DOM 写入函数（桌面端 + 移动端完全同一入口，无端分支）
@@ -347,12 +368,16 @@
     function renderPoemLinesToElement(el, text) {
         if (!el) return;
         var split = splitSevenSevenPoem(text);
-        var span = document.createElement('span');
-        var esc = function (s) {
-            span.textContent = s;
-            return span.innerHTML;
-        };
-        el.innerHTML = split.lines.map(esc).join('<br>');
+        var lines = split.lines;
+        var n = lines.length;
+        var out = '';
+        if (n > 0) {
+            out = _escapeHtml(lines[0]);
+            for (var i = 1; i < n; i++) {
+                out += '<br>' + _escapeHtml(lines[i]);
+            }
+        }
+        el.innerHTML = out;
     }
 
     // (3) 旧 API 兼容层：formatPoemForDisplay 仍返回 \n 分隔字符串（给 Canvas 等下游）
@@ -550,27 +575,37 @@
     // Canvas 图片生成
     // ========================================
     function wrapText(ctx, text, maxWidth) {
-        const lines = [];
-        // 第一步：按 \\n 拆成逻辑行（对用户强制分行保持尊重，例如七言「7,7.」句式）
-        const logicalLines = (text || '').split(/\\r?\\n/);
-
-        logicalLines.forEach(function (logical) {
-            // 第二步：逻辑行内部再按宽度做视觉分行
-            let current = '';
-            for (let i = 0; i < logical.length; i++) {
-                const ch = logical[i];
-                const next = current + ch;
-                const w = ctx.measureText(next).width;
-                if (w > maxWidth && current.length > 0) {
-                    lines.push(current);
-                    current = ch;
-                } else {
-                    current = next;
+        var lines = [];
+        var logicalLines = (text || '').split(/\r?\n/);
+        var i, j, n, m, ch, chW;
+        // 性能：字宽按字符累加（ctx.measureText('a') + ctx.measureText('b')
+        //   与 ctx.measureText('ab') 宽度在等宽字体/CJK 下误差可忽略；
+        //   在等宽比例下累加等价，但减少 O(n) 次字符串拼接与 measureText 全串重算。
+        //   若累加超宽，则再 measureText 确认一次（避免 kerning 误差造成溢出）。
+        for (i = 0, n = logicalLines.length; i < n; i++) {
+            var logical = logicalLines[i];
+            var current = '';
+            var currentW = 0;
+            for (j = 0, m = logical.length; j < m; j++) {
+                ch = logical.charAt(j);
+                chW = ctx.measureText(ch).width;
+                if (currentW + chW > maxWidth && current.length > 0) {
+                    // 用全量 measureText 做一次最终确认（消除字间距误差）
+                    var confirm = ctx.measureText(current + ch).width;
+                    if (confirm > maxWidth) {
+                        lines.push(current);
+                        current = ch;
+                        currentW = chW;
+                        continue;
+                    }
+                    // 确认没超宽 → 按累加是误判，继续拼
                 }
+                current += ch;
+                currentW += chW;
             }
             if (current.length > 0) lines.push(current);
-            else if (logical === '') lines.push(''); // 保留空行语义（如绝句中间空一行）
-        });
+            else if (logical === '') lines.push('');
+        }
         return lines;
     }
 
