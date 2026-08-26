@@ -243,7 +243,11 @@ main { display: block; }
      * 真机上看起来像"点完反色卡住回不去"。 */
     -webkit-tap-highlight-color: transparent;
 }
-.theme-btn:hover { transform: scale(1.08); }
+/* 主题圆点 hover 放大仅桌面端启用 ——
+ * 移动端 tap 后 :hover 会粘滞，scale 会让圆点一直放大回不去。 */
+@media (hover: hover) and (pointer: fine) {
+    .theme-btn:hover { transform: scale(1.08); }
+}
 /* 【关键修复】移除 :active 伪类依赖 — iOS Safari 经典 bug：
  * touch 结束后 :active 可能卡住不释放（尤其是轻微滚动/手势中断后），
  * 导致视觉上"反色回不去"。
@@ -334,24 +338,15 @@ main { display: block; }
      * 真机上表现为"点完一次反色回不去"。 */
     -webkit-tap-highlight-color: transparent;
 }
-.action-btn:hover {
-    background-color: var(--text);
-    color: var(--bg);
-}
-/* 【关键修复】移除 :active 伪类依赖 — iOS Safari 经典 bug：
- * touch 结束后 :active 可能卡住不释放（尤其是轻微滚动/手势中断后），
- * 导致视觉上"反色回不去"。
- * 所有按压视觉统一由 JS 控制的 .pressed 类负责（桌面 mouse·/移动端 touch·）。
- * 用 !important 防止 hover 背景等其他选择器优先级竞争，
- * 移动端 tap 极快时也确保颜色一定可见。
- *
- * 【关键修复2】 :focus-visible 从反色规则中拆出 ——
- *   之前 .pressed 和 :focus-visible 共享 background-color + color，
- *   Chrome 桌面端鼠标点击按钮后按钮获得 focus，如果 :focus-visible 匹配
- *   （尤其页面加载后 body.focus() 触发过键盘 focus heuristic），
- *   即使 JS 已移除 .pressed 类，:focus-visible 仍保持反色 → "点了不返回"。
- *   修复：:focus-visible 只保留 outline: none（无障碍去焦点环），
- *   不再设 background-color / color，反色仅由 .pressed 类控制。 */
+/* 【关键修复3】删除 .action-btn:hover 的反色背景 ——
+ * 这是"点完按钮不回原始状态"的真正根因：
+ *   · 移动端 tap 后 :hover 会粘滞（直到点别处才解除），
+ *     :hover 设了和 .pressed 一样的反色 → .pressed 被 JS 移除后按钮仍被
+ *     :hover 顶在反色。
+ *   · 桌面端点击后鼠标停在按钮上 → :hover 同样保持反色。
+ * 反色反馈只由 .pressed 类负责（mousedown/touchstart 加，100ms 拖尾后移除），
+ * :hover 不再触碰 background/color，从根上消除粘滞。
+ * 设计上更贴合「工具即工具」：按钮有边框已可识别，点击给反色闪一下即可。 */
 .action-btn.pressed {
     background-color: var(--text) !important;
     color: var(--bg) !important;
@@ -387,11 +382,15 @@ main { display: block; }
     opacity: 0.5;
     font-weight: 400;                       /* 与主文/提示同样 400，不单独加粗 */
 }
-/* 同步移除 :active，与按压态主选择器保持一致，
- * 避免 iOS Safari 卡住时子元素也出现半透明态错乱。 */
-.action-btn:hover .btn-hint,
+/* .pressed 时提示全亮（两端通用）。
+ * :hover 提示全亮仅桌面端启用 ——移动端 :hover 粘滞会让提示一直全亮。 */
 .action-btn.pressed .btn-hint {
     opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+    .action-btn:hover .btn-hint {
+        opacity: 1;
+    }
 }
 
 
