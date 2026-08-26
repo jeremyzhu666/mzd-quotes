@@ -63,8 +63,8 @@ body { overflow: hidden; }
 
 /* ===== Font loading gate: eliminate FOUT / FOIT visual jump =====
  * body is transparent by default until html.fonts-loaded is set
- * (document.fonts.ready OR 3s JS fallback); CSS-level animation at
- * 3.2s is the final safety net so page NEVER stays white forever,
+ * (document.fonts.ready OR 5s JS fallback); CSS-level animation at
+ * 5.2s is the final safety net so page NEVER stays white forever,
  * even when JS is disabled or throws.
  * ================================================================ */
 html body {
@@ -76,7 +76,7 @@ html.fonts-loaded body {
     opacity: 1;
 }
 html body {
-    animation: fonts-fallback-visible 3200ms steps(1, end) forwards;
+    animation: fonts-fallback-visible 5200ms steps(1, end) forwards;
 }
 @keyframes fonts-fallback-visible {
     to { opacity: 1; }

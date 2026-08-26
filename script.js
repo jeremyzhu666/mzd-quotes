@@ -43,11 +43,11 @@
      *      —— 解决 iOS document.fonts.ready 虚假 resolve（浏览器说"好了"但字形还在路上）。
      *         Noto Serif SC 和系统宋体（Songti SC）的字形宽度不同，Inter 和系统 sans 也不同，
      *         measureText 宽度相同 → 还在 fallback → 继续轮询；宽度不同 → 真实加载完成。
-     *   3. setTimeout 3000ms 兜底 + CSS @keyframes 3200ms 终极兜底
+     *   3. setTimeout 5000ms 兜底 + CSS @keyframes 5200ms 终极兜底
      *      —— 网络不通 / 被屏蔽时，JS/CSS 两道独立保险保证页面不会永远白屏。
      * ============================================================== */
     (function unlockWhenFontsReady() {
-        var MAX_WAIT_MS = 3000;
+        var MAX_WAIT_MS = 5000;          // 用户接受「显示慢一点」，给生僻字子集更多加载时间
         var POLL_INTERVAL_MS = 80;
         var html = document.documentElement;
         if (!html) return;
@@ -61,11 +61,39 @@
             }
         }
 
-        // ============= 验证 2：Canvas measureText 字形实体验证 =============
-        // 用一个生僻词（含"红橙黄绿青蓝紫"里不容易命中字形回退的笔画）作测试，
-        // 对比"目标字体"和"强制 fallback 到系统字体"的渲染宽度：
-        //   相同 → 目标字体还没加载（浏览器用 fallback 替代渲染）→ 继续等
-        //   不同 → 目标字体真实 glyph 已就绪 → 可以解锁
+        // ============= 构建探针文本：覆盖诗词库全部字符（含生僻字） =============
+        // 原探针只有「赤橙黄绿青蓝紫…」一句，没覆盖诗里的生僻字，导致那些字的
+        // Noto Serif SC 子集没被预加载、也没被验证 → 解锁后字形才到 → 可见跳变。
+        // 现把全部诗词的 text+source 去重拼接，确保每个字（含生僻字）都被
+        // document.fonts.load() 请求 + measureText 验证。poems.js 先于 script.js
+        // 加载，此处 poems 已可用。
+        function buildProbeText() {
+            var arr = (typeof poems !== 'undefined') ? poems : [];
+            if (!Array.isArray(arr)) arr = [];
+            var seen = Object.create(null);
+            var chars = '';
+            for (var i = 0; i < arr.length; i++) {
+                var p = arr[i] || {};
+                var t = (p.text || '') + (p.source || '');
+                for (var j = 0; j < t.length; j++) {
+                    var c = t.charAt(j);
+                    if (!seen[c]) { seen[c] = 1; chars += c; }
+                }
+            }
+            // 兜底：poems 为空时用原探针保证常用字 + 拉丁字
+            if (chars.length < 8) chars = '赤橙黄绿青蓝紫，谁持彩练当空舞？Verses';
+            return chars;
+        }
+        var PROBE_TEXT = buildProbeText();
+        var UI_TEXT = 'Verses · 主席诗词随机生成工具';
+
+        // ============= 验证 2：Canvas measureText 字形实体验证 + 稳定性轮询 =============
+        // 对比「目标字体」与「强制 fallback 到系统字体」的渲染宽度：
+        //   Noto 宽度 = Songti 宽度 → 目标字体还没加载（仍在 fallback）→ 继续等
+        //   Noto 宽度 ≠ Songti 宽度 → 目标字体已加载
+        // 但生僻字子集可能晚于常用字加载：常用字已是 Noto、生僻字仍在 fallback 时，
+        // 总宽度已 ≠ 全 fallback，单次度量会「假通过」。故再加稳定性轮询：
+        //   连续 STABLE_REQUIRED 次宽度不变（没有更多子集在切换）才认为「全部渲染好」。
         var _probeCanvas = null;
         var _probeCtx = null;
         try {
@@ -80,23 +108,41 @@
                 return _probeCtx.measureText(text).width;
             } catch (_) { return -1; }
         }
-        // 测试文本：必须含笔画丰富的字（生僻字 + 常用字混合），确保 fallback 和目标字体宽度有差
-        var PROBE_TEXT = '赤橙黄绿青蓝紫，谁持彩练当空舞？Verses';
+
+        var NOTO_FAMILY = '"Noto Serif SC", "Source Han Serif SC", serif';
+        var SONG_FAMILY = '"Songti SC", "STSong", "SimSun", serif';
+        var INTER_FAMILY = '"Inter", sans-serif';
+        var SANS_FAMILY  = '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+
+        var lastNotoW = -1;
+        var stableCount = 0;
+        var STABLE_REQUIRED = 2;   // 连续 2 次不变 ≈ 160ms 无字形切换
         function fontsReallyAvailable() {
-            if (!_probeCtx) return true; // 不支持 Canvas 就跳过真实验证，走 timeout 兜底
-            // Noto Serif SC 400  vs  Songti SC（系统宋 fallback）
-            var notoW = getTextWidth('"Noto Serif SC", "Source Han Serif SC", serif', '400', 40, PROBE_TEXT);
-            var songW = getTextWidth('"Songti SC", "STSong", "SimSun", serif', '400', 40, PROBE_TEXT);
-            // Inter 300  vs  system-ui sans fallback
-            var interW = getTextWidth('"Inter", sans-serif', '300', 20, 'Verses · 主席诗词随机生成工具');
-            var sansW  = getTextWidth('-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif', '300', 20, 'Verses · 主席诗词随机生成工具');
-            if (notoW < 0 || interW < 0) return true; // 度量失败就跳过
-            var notoSansDiff = (interW !== sansW);   // Inter 真的到了
-            var notoSerifDiff = (notoW !== songW);   // Noto Serif SC 真的到了
-            return notoSansDiff && notoSerifDiff;
+            if (!_probeCtx) return true; // 不支持 Canvas 就跳过，走 timeout 兜底
+            var notoW = getTextWidth(NOTO_FAMILY, '400', 40, PROBE_TEXT);
+            var songW = getTextWidth(SONG_FAMILY, '400', 40, PROBE_TEXT);
+            var interW = getTextWidth(INTER_FAMILY, '300', 20, UI_TEXT);
+            var sansW  = getTextWidth(SANS_FAMILY, '300', 20, UI_TEXT);
+            if (notoW < 0 || interW < 0) return true; // 度量失败跳过
+            // Noto/Inter 是否真的加载（宽度 ≠ 系统回退）
+            var notoLoaded = (notoW !== songW) && (interW !== sansW);
+            if (!notoLoaded) {
+                // 还在回退（或被屏蔽），重置稳定计数继续等
+                stableCount = 0;
+                lastNotoW = notoW;
+                return false;
+            }
+            // Noto 已加载，确认宽度稳定（没有生僻字子集还在切换）
+            if (notoW === lastNotoW) {
+                stableCount++;
+            } else {
+                stableCount = 0;
+                lastNotoW = notoW;
+            }
+            return stableCount >= STABLE_REQUIRED;
         }
 
-        // 硬上限兜底：无论如何 3s 必解锁
+        // 硬上限兜底：无论如何 5s 必解锁（生僻字子集加载慢，给足时间）
         var fallbackTimer = setTimeout(unlock, MAX_WAIT_MS);
 
         function pollUntilGlyphsReady() {
@@ -110,19 +156,19 @@
             setTimeout(pollUntilGlyphsReady, POLL_INTERVAL_MS);
         }
 
-        // ============= 验证 1：document.fonts.load() 显式预加载关键字重 =============
+        // ============= 验证 1：document.fonts.load() 显式预加载（含生僻字子集） =============
         try {
             if (document.fonts && typeof document.fonts.load === 'function') {
-                // 实际会用到的 4 个 weight：
-                //   Noto Serif SC 400（桌面端诗句）、500（移动端诗句）
-                //   Inter 300（标题/出处字重 300）、400（按钮字重 400）
+                // 用 PROBE_TEXT（全部诗词字符，含生僻字）显式请求 Noto Serif SC 的所有
+                // 相关 unicode-range 子集——不显式 load 的话浏览器不会主动拉生僻字所在
+                // 的子集，直到真正渲染时才请求 → 解锁后才到 → 可见 fallback→Noto 跳变。
                 // iOS Safari 不会像桌面 Chrome 那样把 CSS 里声明的全部 weight 都主动预加载，
                 // 必须一个个显式 load() 才会真的发起请求。
                 var loads = [
                     document.fonts.load('400 40px "Noto Serif SC"', PROBE_TEXT),
                     document.fonts.load('500 40px "Noto Serif SC"', PROBE_TEXT),
-                    document.fonts.load('300 20px "Inter"', 'VersesChair'),
-                    document.fonts.load('400 20px "Inter"', 'VersesChair')
+                    document.fonts.load('300 20px "Inter"', UI_TEXT),
+                    document.fonts.load('400 20px "Inter"', UI_TEXT)
                 ];
                 Promise.all(loads).then(function () {
                     // 所有 load() resolve → 开始轮询真实验证（glyph 是否真的画出来不同宽度）
