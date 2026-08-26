@@ -319,7 +319,7 @@
     var _SEVEN_RE = (function () {
         var SEVEN = '[^\\s，。！？、,.!?；;：:「」『』\\[\\]()（）《》\\-—·…\\dA-Za-z]{7}';
         return new RegExp('(?<left>' + SEVEN + ')'
-            + '[,，]'
+            + '(?<comma>[,，])'
             + '(?<right>' + SEVEN + ')'
             + '[。.](?![，。！？])', 'g');
     })();
@@ -345,10 +345,10 @@
         var hit = _splitCache.get(text);
         if (hit !== undefined) return hit;
         var matched = false;
-        var replaced = text.replace(_SEVEN_RE, function (m, left, right) {
+        var replaced = text.replace(_SEVEN_RE, function (m, left, comma, right) {
             matched = true;
             var lastChar = m.charAt(m.length - 1);
-            return left + _LB_MARKER + right + lastChar;
+            return left + comma + _LB_MARKER + right + lastChar;
         });
         var res;
         if (!matched) {
