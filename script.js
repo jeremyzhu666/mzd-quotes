@@ -790,26 +790,51 @@
         }
 
         // Step 2：平移量 dy
-        //   目标：日期号顶部最终落在 DATE_TOP_TARGET (100px)
-        //   因此 dy = DATE_TOP_TARGET - dateTop0
-        //   若上移后整块底部 (bbox.bot + dy) 撞署名 ( > H - bottomSafe=1190)，则回拉到不撞署名
-        var DATE_TOP_TARGET = 100;   // 用户希望"日期区上沿距顶约 100px"
-        var topSafe = 30;            // 允许上移再高也不能让日期撞 0 线（至少留 30）
-        var bottomSafe = 160;        // 距下沿 ≥160，署名 H-90 留 70 呼吸空间
-        var dy = DATE_TOP_TARGET - dateTop0;
-        // 夹紧：不能让顶部 (dateTop0+dy) < topSafe → dy < topSafe - dateTop0
-        var maxDyTop = topSafe - dateTop0;
-        if (dy < maxDyTop) dy = maxDyTop;
+        //   · 用户本轮要求：诗句+其他所有内容（日期/星期/分隔/来源）**整块垂直居中**；
+        //     署名"主席诗词·日签"继续贴底 H-90，不参与居中。
+        //   · 水平位置绝对不变：所有 drawContent 里的 textAlign/padX/W/2 都不动，
+        //     只改外层 ctx.translate(0, dy) 一个 dy，保证 x 坐标 100% 一致。
+        //   · 可用区：[topSafe, sigTop]，sigTop = 署名上沿 - 20px 留白；
+        //     目标：整块 bbox 中心 → 可用区中心 (topSafe + sigTop) / 2
+        //   · 夹紧：如果 bbox 高度 > 可用区高度（超容，比如 12 行长诗），就从 topSafe 起画，
+        //     底部最多停在 sigTop（不撞署名），即 clamp maxDyBot。
+        var topSafe = 40;              // 画布上沿留 40px，不顶字
+        var SIGNATURE_FS = 28;
+        var SIGNATURE_PAD_BOTTOM = 90; // 署名基线在 H - 90 + 0.85*FS
+        var sigBaselineY = H - SIGNATURE_PAD_BOTTOM + SIGNATURE_FS * 0.85;
+        var sigTopY = sigBaselineY - SIGNATURE_FS * 0.9;  // 署名真实"上沿"
+        var sigAreaTop = sigTopY - 30;  // 整块内容底部距离署名至少 30px 呼吸空间
+        var availableMid = (topSafe + sigAreaTop) / 2;
+        var dy = 0;
+
         if (bbox) {
-            var maxDyBot = (H - bottomSafe) - bbox.bot;
-            if (dy > maxDyBot) dy = maxDyBot;   // 长诗会撞署名，先保署名不被撞
+            var bboxMid = (bbox.top + bbox.bot) / 2;
+            dy = availableMid - bboxMid;            // 把整块 bbox 中心平移到可用区中心
+            var bboxH = bbox.bot - bbox.top;
+            var maxDyTop = topSafe - bbox.top;      // 上沿不能 < topSafe
+            var maxDyBot = sigAreaTop - bbox.bot;   // 下沿不能 > sigAreaTop（不撞署名 + 30 呼吸）
+            if (dy < maxDyTop) dy = maxDyTop;
+            if (dy > maxDyBot) dy = maxDyBot;
+        } else {
+            // bbox 扫像素失败 fallback（IE/跨域 canvas）：用估算法，保持诗句左对齐 140 不变
+            var fs_topSafe = topSafe, fs_sigAreaTop = sigAreaTop;
+            var A_totalH = A_digitBaselineOffset + A_digitGapA + A_monthFS + A_monthGapA + A_weekFS * 0.85;
+            var B_totalH = B_gapWeekLine + B_lineThick + B_gapLinePoem;
+            var C_linesH = (poemLines.length - 1) * lineStep + POEM_FS;
+            var D_totalH = D_gapPoem + D_fs;
+            var contentTotalH = A_totalH + B_totalH + C_linesH + D_totalH;
+            var availableH = fs_sigAreaTop - fs_topSafe;
+            var contentTop;
+            if (!isFinite(contentTotalH) || !isFinite(availableH) || contentTotalH <= 0) {
+                contentTop = fs_topSafe;
+            } else if (contentTotalH <= availableH) {
+                contentTop = fs_topSafe + Math.round((availableH - contentTotalH) / 2);
+            } else {
+                contentTop = fs_topSafe;   // 超容贴顶
+            }
+            dy = contentTop;
         }
-        // bbox 扫失败 fallback：估算 dateTop0 ≈ A_digitBaselineOffset - A_digitFS*0.9 ≈ 202.4 - 207 = -5
-        //   => dy ≈ 100 - (-5) ≈ 105；同时兜底 topSafe 40，bottomSafe 160
-        if (!isFinite(dy)) {
-            dy = 100 - (-5);
-            if (dy < topSafe + 5) dy = topSafe + 5;
-        }
+        if (!isFinite(dy)) dy = topSafe;  // 再兜底 NaN
 
         // Step 3：正式 canvas 画背景 → 带 dy 平移重画整块 → 最后署名贴底
         var canvas = document.createElement('canvas');
