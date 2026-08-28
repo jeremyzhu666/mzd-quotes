@@ -610,11 +610,7 @@
     }
 
     function renderPoemToCanvas(poem, colors) {
-        var canvas = document.createElement('canvas');
-        canvas.width = CANVAS_W;
-        canvas.height = CANVAS_H;
-        var ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('当前浏览器不支持 Canvas 2D');
+        var W = CANVAS_W, H = CANVAS_H;
 
         // —— 参考图（微信读书日签）风格：
         //    仅对"导出图"做风格化，不影响页面 DOM 的三个主题色
@@ -623,15 +619,11 @@
         var bg        = isDark ? '#14100C' : '#FAF8F3';
         var ink       = isDark ? '#E9E0D0' : '#3A2A1A';
         var subInk    = isDark ? '#8D8272' : '#8A7D68';
-        var line      = isDark ? '#2B231A' : '#D6CDC0';
+        var lineCol   = isDark ? '#2B231A' : '#D6CDC0';
         var footInk   = isDark ? '#4A4238' : '#BBB4A7';
 
-        // 1. 背景
-        ctx.fillStyle = bg;
-        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
         var padX = 140;                        // 左右留白
-        var maxTextWidth = CANVAS_W - padX * 2;
+        var maxTextWidth = W - padX * 2;
         var today = new Date();
         var MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
                         'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
@@ -643,139 +635,203 @@
         var sansF = SOURCE_FONT_FAMILY;
         var serifF = CANVAS_SERIF_FAMILY;
 
-        // ================================================================
-        // 2. 「整体块垂直居中」先算出各区块高度与间距，避免出现顶贴/底部一大块空白
-        //
-        //  自上而下的组成：
-        //  [A] 日期日签区 (含数字/月年/星期 + 内部分隔)
-        //  [B] 分隔线（含与上下的 gap）
-        //  [C] 诗句区
-        //  [D] 来源（《XX》，与诗句底部有 gap）
-        //
-        //  预留：顶部安全边距 topSafe，底部边距 bottomSafe(给底部"主席诗词·日签"署名用)
-        //  算法：ABCD 整体放入 (CANVAS_H - topSafe - bottomSafe) 区域内并居中。
-        //        若内容超长 (>可放空间)，则从 topSafe 起向下贴顶排布，底部署名仍贴底。
-        // ================================================================
-
         // 诗句字号（先用 84 试排，过长再降到 72）
         var POEM_FS = 84;
         var POEM_LH = 1.38;
-        ctx.font = '500 ' + POEM_FS + 'px ' + serifF;
-        var poemLines = wrapText(ctx, formatPoemForDisplay(poem.text), maxTextWidth);
+        var poemLines = [];
+        try {
+            var wrapC = document.createElement('canvas').getContext('2d');
+            wrapC.font = '500 ' + POEM_FS + 'px ' + serifF;
+            poemLines = wrapText(wrapC, formatPoemForDisplay(poem.text || ''), maxTextWidth) || [];
+        } catch (eWrap) { poemLines = []; }
+        if (!poemLines.length) poemLines = [''];
         // 过长 (>8 行) 降字号到 72，给顶/底安全边距留出空间
         if (poemLines.length > 8) {
             POEM_FS = 72;
             POEM_LH = 1.35;
-            ctx.font = '500 ' + POEM_FS + 'px ' + serifF;
-            poemLines = wrapText(ctx, formatPoemForDisplay(poem.text), maxTextWidth);
+            try {
+                var wrapC2 = document.createElement('canvas').getContext('2d');
+                wrapC2.font = '500 ' + POEM_FS + 'px ' + serifF;
+                poemLines = wrapText(wrapC2, formatPoemForDisplay(poem.text || ''), maxTextWidth) || [''];
+            } catch (eW) {}
         }
         var lineStep = POEM_FS * POEM_LH;
 
-        // [A] 日期日签区：计算总高（各元素之间 gap 固定；基线对齐）
-        var A_digitFS      = 230;         // 字号从 260 缩到 230，避免"数字直接顶到画布上沿"
-        var A_digitGapA    = 24;          // 数字 → 月年 之间
+        // [A] 日期日签区尺寸（gap 固定，字号仅用于真实绘制）
+        var A_digitFS      = 230;
+        var A_digitGapA    = 24;
         var A_monthFS      = 50;
-        var A_monthGapA    = 24;          // 月年 → 星期
+        var A_monthGapA    = 24;
         var A_weekFS       = 36;
-        var A_digitBaselineOffset = A_digitFS * 0.88;     // 数字"下沿"大约在 baseline 前 0.12 字号
-        var A_totalH = A_digitBaselineOffset              // 数字本身视觉高度
-            + A_digitGapA + A_monthFS
-            + A_monthGapA + A_weekFS * 0.85;              // 星期到行底
-
-        // [B] 分隔线块：星期下沿 → 分隔线 (gap 66) + 线厚 2 + 线 → 首行诗 (gap 82)
+        // [B] 分隔线 gap
         var B_gapWeekLine  = 66;
         var B_lineThick    = 2;
         var B_gapLinePoem  = 82;
-        var B_totalH = B_gapWeekLine + B_lineThick + B_gapLinePoem;
         var lineW = 110;
-
-        // [C] 诗句块高 = 从第一行基线到最后一行基线 + 最后一行"底高"
-        var C_linesH = (poemLines.length - 1) * lineStep + POEM_FS;  // 最后一行的视觉高 ≈ 字号
-
-        // [D] 来源块：最后一行诗底 → 来源 top gap 70 + 来源字号底 0.85
+        // [D] 来源
         var D_gapPoem = 70;
         var D_fs = 34;
-        var D_totalH = D_gapPoem + D_fs;
-
-        // 顶/底安全边距
-        var topSafe = 130;
-        var bottomSafe = 150;         // 给底部署名保留 150 空间（署名在 H-90 位置）
-        var availableH = CANVAS_H - topSafe - bottomSafe;
-
-        var contentTotalH = A_totalH + B_totalH + C_linesH + D_totalH;
-        // 居中起点（ABCD 整体从 contentTop 开始放）
-        var contentTop;
-        if (!isFinite(contentTotalH) || !isFinite(availableH) || contentTotalH <= 0) {
-            contentTop = topSafe;   // 异常兜底：贴顶
-        } else if (contentTotalH <= availableH) {
-            contentTop = topSafe + (availableH - contentTotalH) / 2;
-        } else {
-            contentTop = topSafe;          // 内容超长：贴顶排布
-        }
 
         // ================================================================
-        // 3. 从上到下逐个绘制
+        // 关键：像素级垂直居中
+        //   1) 在离屏 canvas 上（以 contentTop=0 起，不考虑居中）先画完整「日期+分隔+诗句+来源」
+        //   2) getImageData 扫出真实 bbox（非背景最小/最大 y）
+        //   3) 算出 dy = (H/2) - (bboxTop + bboxBot)/2，即需要下移的距离
+        //   4) 在正式 canvas 上 fillRect(bg) → ctx.save → ctx.translate(0, dy) → 再按 0 基重画一次 → restore → 署名贴底
+        //   5) 若平移后 bbox 出了上沿/下沿（极长诗），就夹紧到 safe 区（保证署名贴底不被挤掉）
         // ================================================================
-        ctx.textBaseline = 'alphabetic';
-        var cursorY;
+        var A_digitBaselineOffset = A_digitFS * 0.88;
+        var hasLetterSpacing;
 
-        // 3a. 日期数字 260px 900，居中
-        ctx.textAlign = 'center';
-        ctx.font = '900 ' + A_digitFS + 'px ' + sansF;
-        ctx.fillStyle = ink;
-        cursorY = contentTop + A_digitBaselineOffset;
-        ctx.fillText(dayNum, CANVAS_W / 2, cursorY);
+        function drawContent(ctx0, baseY) {
+            // 画「日期+分隔+诗句+来源」整块，所有 y 都基于 baseY（整块的假想 contentTop）
+            var c;
+            ctx0.textBaseline = 'alphabetic';
 
-        // 3b. 月年 "AUGUST 2026"
-        cursorY += (A_digitFS - A_digitBaselineOffset) + A_digitGapA + A_monthFS;
-        ctx.font = '600 ' + A_monthFS + 'px ' + sansF;
-        // 注意：letterSpacing 仅在明确支持时才启用，设置不支持的属性在老浏览器上
-        // 不会报错但可能"部分生效且无法复原"，造成后续诗句/署名都带着大字距。
-        var hasLetterSpacing = ('letterSpacing' in ctx);
-        if (hasLetterSpacing) ctx.letterSpacing = '6px';
-        ctx.fillText(monthStr, CANVAS_W / 2, cursorY);
-        if (hasLetterSpacing) ctx.letterSpacing = '0px';
+            // 3a. 日期数字
+            var cursorY = baseY + A_digitBaselineOffset;
+            ctx0.textAlign = 'center';
+            ctx0.font = '900 ' + A_digitFS + 'px ' + sansF;
+            ctx0.fillStyle = ink;
+            ctx0.fillText(dayNum, W / 2, cursorY);
 
-        // 3c. 星期 "星期五"
-        cursorY += A_monthGapA + A_weekFS * 0.85;
-        ctx.font = '400 ' + A_weekFS + 'px ' + serifF;
-        ctx.fillStyle = subInk;
-        ctx.fillText(weekStr, CANVAS_W / 2, cursorY);
+            // 3b. 月年
+            cursorY += (A_digitFS - A_digitBaselineOffset) + A_digitGapA + A_monthFS;
+            ctx0.font = '600 ' + A_monthFS + 'px ' + sansF;
+            if (hasLetterSpacing) ctx0.letterSpacing = '6px';
+            ctx0.fillText(monthStr, W / 2, cursorY);
+            if (hasLetterSpacing) ctx0.letterSpacing = '0px';
 
-        // 3d. 分隔线（星期下沿 = cursorY - A_weekFS*0.85 ；B_gapWeekLine 后再画）
-        var weekBottomY = cursorY - A_weekFS * 0.85 + A_weekFS;     // 星期实际底部
-        var lineCenterY = weekBottomY + B_gapWeekLine + B_lineThick / 2;
-        var lineX = (CANVAS_W - lineW) / 2;
-        ctx.fillStyle = line;
-        ctx.fillRect(lineX, lineCenterY - B_lineThick / 2, lineW, B_lineThick);
+            // 3c. 星期
+            cursorY += A_monthGapA + A_weekFS * 0.85;
+            ctx0.font = '400 ' + A_weekFS + 'px ' + serifF;
+            ctx0.fillStyle = subInk;
+            ctx0.fillText(weekStr, W / 2, cursorY);
 
-        // 3e. 诗句：左对齐，从 lineCenterY + B_gapLinePoem 作为"首行字"的顶部 -> 转基线
-        var firstPoemTop = lineCenterY + B_lineThick / 2 + B_gapLinePoem;
-        var firstPoemBaseline = firstPoemTop + POEM_FS * 0.88;
-        ctx.textAlign = 'left';
-        ctx.font = '500 ' + POEM_FS + 'px ' + serifF;
-        ctx.fillStyle = ink;
-        cursorY = firstPoemBaseline;
-        for (var i = 0; i < poemLines.length; i++) {
-            ctx.fillText(poemLines[i], padX, cursorY);
-            cursorY += lineStep;
+            // 3d. 分隔线
+            var weekBottomY = cursorY - A_weekFS * 0.85 + A_weekFS;
+            var lineCenterY = weekBottomY + B_gapWeekLine + B_lineThick / 2;
+            var lineX = (W - lineW) / 2;
+            ctx0.fillStyle = lineCol;
+            ctx0.fillRect(lineX, lineCenterY - B_lineThick / 2, lineW, B_lineThick);
+
+            // 3e. 诗句
+            var firstPoemTop = lineCenterY + B_lineThick / 2 + B_gapLinePoem;
+            var firstPoemBaseline = firstPoemTop + POEM_FS * 0.88;
+            ctx0.textAlign = 'left';
+            ctx0.font = '500 ' + POEM_FS + 'px ' + serifF;
+            ctx0.fillStyle = ink;
+            cursorY = firstPoemBaseline;
+            var i;
+            for (i = 0; i < poemLines.length; i++) {
+                ctx0.fillText(poemLines[i], padX, cursorY);
+                cursorY += lineStep;
+            }
+            var lastPoemBottom = firstPoemBaseline + (poemLines.length - 1) * lineStep + POEM_FS * 0.88;
+
+            // 3f. 来源
+            var sourceText = '《' + (poem.source || '') + '》';
+            var sourceY = lastPoemBottom + D_gapPoem + D_fs * 0.85;
+            ctx0.font = '400 ' + D_fs + 'px ' + serifF;
+            ctx0.fillStyle = subInk;
+            ctx0.textAlign = 'center';
+            ctx0.fillText(sourceText, W / 2, sourceY);
         }
-        var lastPoemBottom = firstPoemBaseline + (poemLines.length - 1) * lineStep + POEM_FS * 0.88;
-        // 近似 lastPoemBottom = 最后一行基线 + 0.88*FS
 
-        // 3f. 来源 —— 《水调歌头·游泳》居中 serif，距最后一行底部 D_gapPoem
-        var sourceText = '《' + (poem.source || '') + '》';
-        var sourceY = lastPoemBottom + D_gapPoem + D_fs * 0.85;
-        ctx.font = '400 ' + D_fs + 'px ' + serifF;
-        ctx.fillStyle = subInk;
-        ctx.textAlign = 'center';
-        ctx.fillText(sourceText, CANVAS_W / 2, sourceY);
+        // Step 1：两个离屏扫描
+        //   a) 先单独扫描「日期号数字」的真实顶部：在 mini dummy 上 (0,0) 起画数字，扫出 dateTop0
+        //      → 本轮 dy 的锚点："日期号顶部"最终落在 DATE_TOP_TARGET = 100px。
+        //   b) 再画整块 (日期+分隔+诗句+来源) 扫全局 bbox，用于夹紧底部，不撞署名。
+        var dummy = document.createElement('canvas');
+        dummy.width = W; dummy.height = H;
+        var dCtx = dummy.getContext('2d', { willReadFrequently: true });
+        if (!dCtx) dCtx = dummy.getContext('2d');
+        hasLetterSpacing = dCtx && ('letterSpacing' in dCtx);
+        var bbox = null;
+        var dateTop0 = 0;  // 当 drawContent(dCtx, baseY=0) 时，日期数字在像素上的顶部 y
+        if (dCtx) {
+            // --- 1a) 仅画日期号，扫 dateTop0（要与 3a 所用 font/textAlign/ink 完全一致）
+            try {
+                dCtx.clearRect(0, 0, W, H);
+                dCtx.textAlign = 'center';
+                dCtx.textBaseline = 'alphabetic';
+                dCtx.font = '900 ' + A_digitFS + 'px ' + sansF;
+                dCtx.fillStyle = ink;
+                dCtx.fillText(dayNum, W / 2, 0 + A_digitBaselineOffset);   // baseY=0 时数字 baseline
+                var d1 = dCtx.getImageData(0, 0, W, H).data;
+                function d1Alpha(x, y) { return d1[(y * W + x) * 4 + 3]; }
+                var xMin = (W * 0.35) | 0, xMax = (W * 0.65) | 0;
+                for (var yA = 0; yA < (A_digitFS * 1.5 | 0); yA++) {
+                    for (var xA = xMin; xA < xMax; xA += 2) {
+                        if (d1Alpha(xA, yA) > 20) { dateTop0 = yA; yA = 1e9; break; }
+                    }
+                }
+            } catch (eA) { dateTop0 = 0; }
 
-        // 3g. 底部署名 "主席诗词·日签" 超浅灰 —— 贴底（H-90）不居中内容计算
+            // --- 1b) 画整块，扫整体 bbox（用于底部夹紧署名）
+            try {
+                dCtx.clearRect(0, 0, W, H);
+                drawContent(dCtx, 0);
+                var img = dCtx.getImageData(0, 0, W, H).data;
+                function alphaAt(x, y) { return img[(y * W + x) * 4 + 3]; }
+                var xL = 80, xR = W - 80;
+                var bTop = -1, bBot = -1;
+                var y, x, aHit;
+                for (y = 0; y < H; y++) {
+                    aHit = false;
+                    for (x = xL; x < xR; x += 4) {
+                        if (alphaAt(x, y) > 20) { aHit = true; break; }
+                    }
+                    if (aHit) { if (bTop < 0) bTop = y; bBot = y; }
+                    else if (bTop >= 0 && bBot >= 0 && y - bBot > 40) break;
+                }
+                if (bTop >= 0 && bBot >= bTop) bbox = { top: bTop, bot: bBot };
+            } catch (e) { bbox = null; }
+        }
+
+        // Step 2：平移量 dy
+        //   目标：日期号顶部最终落在 DATE_TOP_TARGET (100px)
+        //   因此 dy = DATE_TOP_TARGET - dateTop0
+        //   若上移后整块底部 (bbox.bot + dy) 撞署名 ( > H - bottomSafe=1190)，则回拉到不撞署名
+        var DATE_TOP_TARGET = 100;   // 用户希望"日期区上沿距顶约 100px"
+        var topSafe = 30;            // 允许上移再高也不能让日期撞 0 线（至少留 30）
+        var bottomSafe = 160;        // 距下沿 ≥160，署名 H-90 留 70 呼吸空间
+        var dy = DATE_TOP_TARGET - dateTop0;
+        // 夹紧：不能让顶部 (dateTop0+dy) < topSafe → dy < topSafe - dateTop0
+        var maxDyTop = topSafe - dateTop0;
+        if (dy < maxDyTop) dy = maxDyTop;
+        if (bbox) {
+            var maxDyBot = (H - bottomSafe) - bbox.bot;
+            if (dy > maxDyBot) dy = maxDyBot;   // 长诗会撞署名，先保署名不被撞
+        }
+        // bbox 扫失败 fallback：估算 dateTop0 ≈ A_digitBaselineOffset - A_digitFS*0.9 ≈ 202.4 - 207 = -5
+        //   => dy ≈ 100 - (-5) ≈ 105；同时兜底 topSafe 40，bottomSafe 160
+        if (!isFinite(dy)) {
+            dy = 100 - (-5);
+            if (dy < topSafe + 5) dy = topSafe + 5;
+        }
+
+        // Step 3：正式 canvas 画背景 → 带 dy 平移重画整块 → 最后署名贴底
+        var canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        var ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('当前浏览器不支持 Canvas 2D');
+        hasLetterSpacing = ('letterSpacing' in ctx);
+
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.save();
+        ctx.translate(0, dy);
+        drawContent(ctx, 0);   // 整块内容从 y=0 起画，外层 translate(dy) 负责精准居中
+        ctx.restore();
+
+        // 署名：贴底 H-90 固定（与参考图一致）；如 bbox.bot+dy 撞到底部 safe，
+        //       这里仍然画在 H-90，用户如需参与居中后续再扩展。
         ctx.font = '400 28px ' + sansF;
         ctx.fillStyle = footInk;
         ctx.textAlign = 'center';
-        ctx.fillText('主席诗词·日签', CANVAS_W / 2, CANVAS_H - 90 + 28 * 0.85);
+        ctx.fillText('主席诗词·日签', W / 2, H - 90 + 28 * 0.85);
 
         return canvas;
     }
