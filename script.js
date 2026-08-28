@@ -616,49 +616,101 @@
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('当前浏览器不支持 Canvas 2D');
 
+        // —— 参考图（微信读书日签）风格：
+        //    仅对"导出图"做风格化，不影响页面 DOM 的三个主题色
+        //    · 浅色主题 → 米白底 + 深棕字；深色主题 → 保持暗色
+        const isDark = (colors.bg || '').toLowerCase() === '#0a0a0a';
+        const bg        = isDark ? '#14100C' : '#FAF8F3';
+        const ink       = isDark ? '#E9E0D0' : '#3A2A1A';
+        const subInk    = isDark ? '#8D8272' : '#8A7D68';
+        const line      = isDark ? '#2B231A' : '#D6CDC0';
+        const footInk   = isDark ? '#4A4238' : '#BBB4A7';
+
         // 1. 背景
-        ctx.fillStyle = colors.bg;
+        ctx.fillStyle = bg;
         ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-        const maxTextWidth = CANVAS_W - PADDING * 2;
-        const centerX = CANVAS_W / 2;
+        const padX = 140;                        // 左右留白
+        const maxTextWidth = CANVAS_W - padX * 2;
+        const today = new Date();
+        const MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
+                        'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+        const WEEKDAYS = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+        const dayNum   = String(today.getDate());
+        const monthStr = MONTHS[today.getMonth()] + ' ' + today.getFullYear();
+        const weekStr  = WEEKDAYS[today.getDay()];
 
-        // 2. 诗句（使用系统宋体优先的 CANVAS_SERIF_FAMILY 兜底）
-        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + CANVAS_SERIF_FAMILY;
-        ctx.fillStyle = colors.text;
-        ctx.textBaseline = 'alphabetic';
+        const sansF = SOURCE_FONT_FAMILY;
+        const serifF = CANVAS_SERIF_FAMILY;
+
+        // 2. 顶部日签区：居中绘制
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+
+        // 2a. 日期超大数字（参考图的「26」，900 字重，尺寸决定整卡节奏）
+        var cursorY = 195;          // 数字基准线：距离顶部 195（数字占 ~210 高）
+        ctx.font = '900 260px ' + sansF;
+        ctx.fillStyle = ink;
+        ctx.fillText(dayNum, CANVAS_W / 2, cursorY);
+
+        // 2b. 月份年 "AUGUST 2026"
+        cursorY += 80;
+        ctx.font = '600 52px ' + sansF;
+        ctx.letterSpacing = '6px';     // 大字距，参考图月份字母稀疏
+        if (typeof ctx.letterSpacing !== 'undefined') {
+            /* 已生效 */
+        } else if (Object.getOwnPropertyDescriptor && Object.getOwnPropertyDescriptor(ctx, 'letterSpacing')) {
+            /* 某些浏览器在设置时才会抛，忽略 */
+        }
+        ctx.fillText(monthStr, CANVAS_W / 2, cursorY);
+        ctx.letterSpacing = '0px';
+
+        // 2c. 星期 "星期三"
+        cursorY += 66;
+        ctx.font = '400 36px ' + serifF;
+        ctx.fillStyle = subInk;
+        ctx.fillText(weekStr, CANVAS_W / 2, cursorY);
+
+        // 3. 分隔线（短横线，居中，110×2px）
+        cursorY += 88;
+        const lineW = 110, lineThick = 2;
+        const lineX = (CANVAS_W - lineW) / 2;
+        ctx.fillStyle = line;
+        ctx.fillRect(lineX, cursorY, lineW, lineThick);
+
+        // 4. 诗句（左对齐，宋体 500 84px，行高 1.38 更松 —— 参考图行距明显）
+        const POEM_FS = 84;
+        const POEM_LH = 1.38;
+        const firstPoemBaseline = cursorY + 102;   // 诗句首行基线（从分隔线下沿 + 102 空白）
+        cursorY = firstPoemBaseline;
+        ctx.textAlign = 'left';
+        ctx.font = '500 ' + POEM_FS + 'px ' + serifF;
+        ctx.fillStyle = ink;
 
         const poemLines = wrapText(ctx, formatPoemForDisplay(poem.text), maxTextWidth);
-
-        // 3. 出处
-        const sourceText = '—— ' + poem.source;
-        ctx.font = '300 ' + SOURCE_FONT_SIZE + 'px ' + SOURCE_FONT_FAMILY;
-        ctx.fillStyle = colors.secondary;
-        ctx.textAlign = 'center';
-
-        // 4. 计算整体内容高度，垂直居中
-        const poemBlockHeight = poemLines.length * POEM_FONT_SIZE * POEM_LINE_HEIGHT;
-        const sourceBlockHeight = SOURCE_FONT_SIZE * 1.4;
-        const totalContentHeight = poemBlockHeight + GAP_BETWEEN + sourceBlockHeight;
-        const contentTop = (CANVAS_H - totalContentHeight) / 2;
-        let currentY;
-
-        // 5. 绘制诗句
-        ctx.font = '400 ' + POEM_FONT_SIZE + 'px ' + CANVAS_SERIF_FAMILY;
-        ctx.fillStyle = colors.text;
-        const lineStep = POEM_FONT_SIZE * POEM_LINE_HEIGHT;
-        currentY = contentTop + POEM_FONT_SIZE * 0.88;
+        const lineStep = POEM_FS * POEM_LH;
         for (let i = 0; i < poemLines.length; i++) {
-            ctx.fillText(poemLines[i], centerX, currentY);
-            currentY += lineStep;
+            ctx.fillText(poemLines[i], padX, cursorY);
+            cursorY += lineStep;
         }
+        // 最后一行的基线 = firstPoemBaseline + (poemLines.length - 1) * lineStep
+        const lastPoemBaseline = firstPoemBaseline + (poemLines.length - 1) * lineStep;
 
-        // 6. 绘制出处
-        currentY = contentTop + poemBlockHeight + GAP_BETWEEN + SOURCE_FONT_SIZE * 0.85;
-        ctx.font = '300 ' + SOURCE_FONT_SIZE + 'px ' + SOURCE_FONT_FAMILY;
-        ctx.fillStyle = colors.secondary;
-        ctx.fillText(sourceText, centerX, currentY);
+        // 5. 来源 —— 参考图格式 《毛泽东选集》，居中，serif
+        //    从最后一行基线往下 90px（视觉上约"最后一行底部 → 来源上沿"的空白）
+        const sourceText = '《' + (poem.source || '') + '》';
+        const SOURCE_FS = 34;
+        const sourceY = lastPoemBaseline + 90 + SOURCE_FS * 0.85;
+        ctx.font = '400 ' + SOURCE_FS + 'px ' + serifF;
+        ctx.fillStyle = subInk;
+        ctx.textAlign = 'center';
+        ctx.fillText(sourceText, CANVAS_W / 2, sourceY);
+
+        // 6. 底部署名 "主席诗词·日签" 超浅灰
+        ctx.font = '400 28px ' + sansF;
+        ctx.fillStyle = footInk;
+        ctx.textAlign = 'center';
+        ctx.fillText('主席诗词·日签', CANVAS_W / 2, CANVAS_H - 90);
 
         return canvas;
     }
