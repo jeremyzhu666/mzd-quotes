@@ -705,7 +705,9 @@
         var contentTotalH = A_totalH + B_totalH + C_linesH + D_totalH;
         // 居中起点（ABCD 整体从 contentTop 开始放）
         var contentTop;
-        if (contentTotalH <= availableH) {
+        if (!isFinite(contentTotalH) || !isFinite(availableH) || contentTotalH <= 0) {
+            contentTop = topSafe;   // 异常兜底：贴顶
+        } else if (contentTotalH <= availableH) {
             contentTop = topSafe + (availableH - contentTotalH) / 2;
         } else {
             contentTop = topSafe;          // 内容超长：贴顶排布
@@ -727,9 +729,12 @@
         // 3b. 月年 "AUGUST 2026"
         cursorY += (A_digitFS - A_digitBaselineOffset) + A_digitGapA + A_monthFS;
         ctx.font = '600 ' + A_monthFS + 'px ' + sansF;
-        try { ctx.letterSpacing = '6px'; } catch (e) { /* 老浏览器忽略 */ }
+        // 注意：letterSpacing 仅在明确支持时才启用，设置不支持的属性在老浏览器上
+        // 不会报错但可能"部分生效且无法复原"，造成后续诗句/署名都带着大字距。
+        var hasLetterSpacing = ('letterSpacing' in ctx);
+        if (hasLetterSpacing) ctx.letterSpacing = '6px';
         ctx.fillText(monthStr, CANVAS_W / 2, cursorY);
-        try { ctx.letterSpacing = '0px'; } catch (e) {}
+        if (hasLetterSpacing) ctx.letterSpacing = '0px';
 
         // 3c. 星期 "星期五"
         cursorY += A_monthGapA + A_weekFS * 0.85;
@@ -788,13 +793,39 @@
         downloadBtn.setAttribute('disabled', 'true');
 
         waitForFonts().then(function () {
-            const canvas = renderPoemToCanvas(poem, colors);
+            var canvas = renderPoemToCanvas(poem, colors);
             return new Promise(function (resolve, reject) {
                 try {
                     canvas.toBlob(function (blob) {
                         if (!blob) {
                             reject(new Error('Canvas 导出为空'));
                             return;
+                        }
+                        // —— 无法预览的关键修复 ——
+                        // 少数浏览器在 canvas API 调用链异常时会给出"空 Blob / 超小 Blob"，
+                        // 这种文件字节头不是真正 PNG，Finder/预览/微信等都打不开。
+                        // 1080x1350 的 PNG 即使空白也在 30KB 以上，< 5KB 就当它损坏。
+                        if (blob.size < 5000) {
+                            try {
+                                var dataURL = canvas.toDataURL('image/png');
+                                var commaIdx = dataURL.indexOf(',');
+                                var b64 = commaIdx >= 0 ? dataURL.slice(commaIdx + 1) : '';
+                                if (b64.length > 400 && /^iVBORw0KGgo/.test(b64.slice(0, 24))) {   // PNG 头
+                                    var bin = atob(b64);
+                                    var u8 = new Uint8Array(bin.length);
+                                    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+                                    blob = new Blob([u8.buffer], { type: 'image/png' });
+                                }
+                                // 经过 toDataURL 后仍然很小 → 说明真的内容很少（画布全白也算正常 PNG，
+                                // 但我们 1080x1350 全白 PNG ≈ 30KB，真 < 5KB 还不是 PNG 头就直接 reject）
+                                if (blob.size < 5000) {
+                                    reject(new Error('PNG 字节异常 (size=' + blob.size + ')'));
+                                    return;
+                                }
+                            } catch (e2) {
+                                reject(e2);
+                                return;
+                            }
                         }
                         resolve(blob);
                     }, 'image/png');
